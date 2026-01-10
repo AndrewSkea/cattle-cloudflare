@@ -453,7 +453,7 @@ pnpm run deploy
 
 ## Contact & Resources
 
-**Repository**: [Your GitHub URL here]
+**Repository**: https://github.com/AndrewSkea/cattle-cloudflare
 
 **Cloudflare Dashboard**:
 - Workers: https://dash.cloudflare.com/workers
