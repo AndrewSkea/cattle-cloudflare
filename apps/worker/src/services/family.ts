@@ -5,7 +5,7 @@
  * Handles recursive queries with circular reference protection
  */
 
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, isNotNull, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DrizzleD1Database } from '../db/client';
 import type { FamilyTreeNode } from '../types';
@@ -323,6 +323,150 @@ export class FamilyService {
       grandchildrenCount,
       totalDescendants,
       generationDepth: maxDepth,
+    };
+  }
+
+  // ==================== ENHANCED FAMILY STATS ====================
+
+  private static SIZE_LABELS: Record<number, string> = {
+    1: 'Large',
+    2: 'Medium-Large',
+    3: 'Medium',
+    4: 'Small',
+  };
+
+  /**
+   * Get enhanced family stats with sale data, herd averages, and calving intervals
+   */
+  async getEnhancedFamilyStats(cattleId: number) {
+    // 1. Get the cattle record
+    const animal = await this.db.query.cattle.findFirst({
+      where: eq(schema.cattle.id, cattleId),
+    });
+
+    if (!animal) {
+      throw new Error(`Cattle not found: ${cattleId}`);
+    }
+
+    // 2. Get siblings (same damTag) with sale data
+    let siblingsRaw: any[] = [];
+    if (animal.damTag) {
+      siblingsRaw = await this.db.query.cattle.findMany({
+        where: eq(schema.cattle.damTag, animal.damTag),
+        with: { sale: true },
+      });
+      // Exclude self
+      siblingsRaw = siblingsRaw.filter(s => s.id !== cattleId);
+    }
+
+    const siblings = siblingsRaw.map(s => ({
+      id: s.id,
+      managementTag: s.managementTag,
+      tagNo: s.tagNo,
+      sex: s.sex,
+      yob: s.yob,
+      size: s.size,
+      sizeLabel: s.size ? FamilyService.SIZE_LABELS[s.size] || null : null,
+      onFarm: s.onFarm,
+      sale: s.sale ? {
+        salePrice: s.sale.salePrice,
+        weightKg: s.sale.weightKg,
+        ageMonths: s.sale.ageMonths,
+        eventDate: s.sale.eventDate,
+      } : null,
+    }));
+
+    const siblingsSold = siblings.filter(s => s.sale && s.sale.salePrice != null);
+    const siblingStats = {
+      avgSalePrice: siblingsSold.length > 0
+        ? siblingsSold.reduce((sum, s) => sum + (s.sale!.salePrice || 0), 0) / siblingsSold.length
+        : null,
+      avgWeight: siblingsSold.filter(s => s.sale!.weightKg != null).length > 0
+        ? siblingsSold.filter(s => s.sale!.weightKg != null).reduce((sum, s) => sum + (s.sale!.weightKg || 0), 0) / siblingsSold.filter(s => s.sale!.weightKg != null).length
+        : null,
+      count: siblings.length,
+      soldCount: siblingsSold.length,
+    };
+
+    // 3. Get offspring with sale data
+    const offspringRaw = await this.db.query.cattle.findMany({
+      where: eq(schema.cattle.damTag, cattleId),
+      with: { sale: true },
+    });
+
+    const offspring = offspringRaw.map(o => ({
+      id: o.id,
+      managementTag: o.managementTag,
+      tagNo: o.tagNo,
+      sex: o.sex,
+      yob: o.yob,
+      size: o.size,
+      sizeLabel: o.size ? FamilyService.SIZE_LABELS[o.size] || null : null,
+      onFarm: o.onFarm,
+      sale: o.sale ? {
+        salePrice: o.sale.salePrice,
+        weightKg: o.sale.weightKg,
+        ageMonths: o.sale.ageMonths,
+        eventDate: o.sale.eventDate,
+      } : null,
+    }));
+
+    const offspringSold = offspring.filter(o => o.sale && o.sale.salePrice != null);
+    const sizeDistribution = { 1: 0, 2: 0, 3: 0, 4: 0 } as { 1: number; 2: number; 3: number; 4: number };
+    for (const o of offspringRaw) {
+      if (o.size && o.size >= 1 && o.size <= 4) {
+        sizeDistribution[o.size as 1 | 2 | 3 | 4]++;
+      }
+    }
+
+    const offspringStats = {
+      avgSalePrice: offspringSold.length > 0
+        ? offspringSold.reduce((sum, o) => sum + (o.sale!.salePrice || 0), 0) / offspringSold.length
+        : null,
+      avgWeight: offspringSold.filter(o => o.sale!.weightKg != null).length > 0
+        ? offspringSold.filter(o => o.sale!.weightKg != null).reduce((sum, o) => sum + (o.sale!.weightKg || 0), 0) / offspringSold.filter(o => o.sale!.weightKg != null).length
+        : null,
+      count: offspring.length,
+      soldCount: offspringSold.length,
+      sizeDistribution,
+    };
+
+    // 4. Calculate herd average sale price
+    const allSales = await this.db.query.saleEvents.findMany();
+    const salesWithPrice = allSales.filter(s => s.salePrice != null);
+    const herdAvgSalePrice = salesWithPrice.length > 0
+      ? salesWithPrice.reduce((sum, s) => sum + (s.salePrice || 0), 0) / salesWithPrice.length
+      : null;
+
+    // 5. Get calving intervals for this cow
+    const calvings = await this.db.query.calvingEvents.findMany({
+      where: eq(schema.calvingEvents.motherId, cattleId),
+      orderBy: [asc(schema.calvingEvents.calvingDate)],
+    });
+
+    const calvingIntervals = calvings.map((c, i) => {
+      let daysSinceLastCalving: number | null = null;
+      if (i > 0) {
+        const prevDate = new Date(calvings[i - 1].calvingDate);
+        const currDate = new Date(c.calvingDate);
+        daysSinceLastCalving = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      }
+      // Use the stored value if available, otherwise use calculated
+      return {
+        calvingDate: c.calvingDate,
+        daysSinceLastCalving: c.daysSinceLastCalving ?? daysSinceLastCalving,
+        calfId: c.calfId,
+        calfSex: c.calfSex,
+      };
+    });
+
+    return {
+      siblings,
+      siblingStats,
+      offspring,
+      offspringStats,
+      herdAvgSalePrice,
+      calvingIntervals,
     };
   }
 

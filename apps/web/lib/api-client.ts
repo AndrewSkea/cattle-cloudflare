@@ -81,6 +81,10 @@ export class ApiClient {
     return this.request('/api/family/foundation');
   }
 
+  async getEnhancedFamilyStats(id: number) {
+    return this.request(`/api/family/enhanced-stats/${id}`);
+  }
+
   // Upload endpoints
   async uploadFile(file: File) {
     const formData = new FormData();

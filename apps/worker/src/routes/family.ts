@@ -158,6 +158,29 @@ family.get('/siblings/:id', async (c) => {
 });
 
 /**
+ * GET /api/family/enhanced-stats/:id
+ * Get enhanced family stats with sale data, herd averages, and calving intervals
+ */
+family.get('/enhanced-stats/:id', async (c) => {
+  const db = c.get('db');
+  const id = parseInt(c.req.param('id'));
+
+  if (isNaN(id)) {
+    return c.json({ error: 'Invalid ID' }, 400);
+  }
+
+  try {
+    const familyService = new FamilyService(db);
+    const stats = await familyService.getEnhancedFamilyStats(id);
+
+    return c.json({ data: stats });
+  } catch (error) {
+    console.error('Error fetching enhanced stats:', error);
+    return c.json({ error: 'Failed to fetch enhanced family stats' }, 500);
+  }
+});
+
+/**
  * GET /api/family/stats/:id
  * Get detailed family size statistics
  */
