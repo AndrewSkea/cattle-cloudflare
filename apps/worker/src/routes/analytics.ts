@@ -95,15 +95,68 @@ analytics.get('/dashboard', async (c) => {
     const revenueYTD = revenueResult[0]?.totalRevenue || 0;
     const salesCountYTD = revenueResult[0]?.totalSales || 0;
 
-    // Recent calvings (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Recent calvings (last 90 days) - return actual array with details
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    const recentCalvingsResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(schema.calvingEvents)
-      .where(gte(schema.calvingEvents.calvingDate, thirtyDaysAgo.toISOString().split('T')[0]));
-    const recentCalvings = recentCalvingsResult[0]?.count || 0;
+    const recentCalvingsData = await db.query.calvingEvents.findMany({
+      where: gte(schema.calvingEvents.calvingDate, ninetyDaysAgo.toISOString().split('T')[0]),
+      with: {
+        mother: true,
+        calf: true,
+      },
+      orderBy: (calvingEvents, { desc }) => [desc(calvingEvents.calvingDate)],
+      limit: 10,
+    });
+
+    const recentCalvings = recentCalvingsData.map(c => ({
+      id: c.id,
+      cattleId: c.motherId,
+      cattleTag: c.mother?.managementTag || c.mother?.tagNo || 'Unknown',
+      calvingDate: c.calvingDate,
+      calfTag: c.calf?.managementTag || c.calf?.tagNo || null,
+      difficulty: c.notes || null,
+    }));
+
+    // Upcoming calving predictions - return actual array
+    const upcomingPredictionsData = await db.query.serviceEvents.findMany({
+      where: and(
+        isNotNull(schema.serviceEvents.expectedCalvingDate),
+        gte(schema.serviceEvents.expectedCalvingDate, new Date().toISOString().split('T')[0]),
+        sql`${schema.serviceEvents.successful} IS NULL`
+      ),
+      with: {
+        cow: true,
+      },
+      orderBy: (serviceEvents, { asc }) => [asc(serviceEvents.expectedCalvingDate)],
+      limit: 10,
+    });
+
+    const upcomingPredictions = upcomingPredictionsData.map(s => {
+      const daysUntil = Math.ceil(
+        (new Date(s.expectedCalvingDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        cattleId: s.cowId,
+        cattleTag: s.cow?.managementTag || s.cow?.tagNo || 'Unknown',
+        expectedDate: s.expectedCalvingDate,
+        daysUntil,
+        serviceDate: s.serviceDate,
+      };
+    });
+
+    // Herd composition by breed
+    const allCattleForComposition = await db
+      .select({ breed: schema.cattle.breed })
+      .from(schema.cattle)
+      .where(eq(schema.cattle.onFarm, true));
+
+    const breedCounts: Record<string, number> = {};
+    allCattleForComposition.forEach(c => {
+      const breed = c.breed || 'Unknown';
+      breedCounts[breed] = (breedCounts[breed] || 0) + 1;
+    });
+    const herdComposition = Object.entries(breedCounts).map(([name, value]) => ({ name, value }));
 
     return c.json({
       data: {
@@ -113,6 +166,8 @@ analytics.get('/dashboard', async (c) => {
         revenueYTD,
         salesCountYTD,
         recentCalvings,
+        upcomingPredictions,
+        herdComposition,
         lastUpdated: new Date().toISOString(),
       },
     });
@@ -123,10 +178,10 @@ analytics.get('/dashboard', async (c) => {
 });
 
 /**
- * GET /api/analytics/herd-stats
+ * GET /api/analytics/herd-statistics
  * Herd statistics - breakdown by breed, sex, age, on-farm status
  */
-analytics.get('/herd-stats', async (c) => {
+analytics.get('/herd-statistics', async (c) => {
   const db = c.get('db');
 
   try {
@@ -178,13 +233,17 @@ analytics.get('/herd-stats', async (c) => {
       return acc;
     }, {} as Record<string, number>);
 
+    // Convert to array format for charts
+    const byBreedArray = Object.entries(breedStats).map(([name, value]) => ({ name, value }));
+    const bySexArray = Object.entries(sexStats).map(([name, value]) => ({ name, value }));
+    const byAgeArray = Object.entries(ageStats).map(([name, value]) => ({ name, value }));
+
     return c.json({
       data: {
-        total: allCattle.length,
-        byBreed: breedStats,
-        bySex: sexStats,
-        byAge: ageStats,
-        bySize: sizeStats,
+        totalCount: allCattle.length,
+        byBreed: byBreedArray,
+        bySex: bySexArray,
+        byAgeGroup: byAgeArray,
         onFarm: onFarmCount,
         offFarm: offFarmCount,
       },
@@ -259,15 +318,15 @@ analytics.get('/breeding-metrics', async (c) => {
 
     return c.json({
       data: {
-        breedingFemales: breedingFemales.length,
         calvingRate: parseFloat(calvingRate.toFixed(2)),
         avgCalvingInterval: parseFloat(avgCalvingInterval.toFixed(0)),
         successRate: parseFloat(successRate.toFixed(2)),
+        totalServices: allServices.length,
+        pregnantCows: pendingServices, // Cows with pending service outcomes
+        breedingFemales: breedingFemales.length,
         totalCalvings: allCalvings.length,
         calvingsThisYear,
-        totalServices: allServices.length,
         successfulServices,
-        pendingServices,
         calvingsByYear,
         calfSexDistribution: calfSexStats,
       },
@@ -341,12 +400,20 @@ analytics.get('/financial-summary', async (c) => {
       return acc;
     }, {} as Record<number, { count: number; revenue: number }>);
 
+    // Calculate YTD metrics
+    const currentYear = getCurrentYear();
+    const ytdStartDate = `${currentYear}-01-01`;
+    const ytdSales = soldEvents.filter(s => s.eventDate >= ytdStartDate);
+    const ytdRevenue = ytdSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+
     return c.json({
       data: {
-        totalSales: soldEvents.length,
         totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-        avgSalePrice: parseFloat(avgSalePrice.toFixed(2)),
+        totalSales: soldEvents.length,
+        avgPricePerHead: parseFloat(avgSalePrice.toFixed(2)),
         avgWeight: parseFloat(avgWeight.toFixed(2)),
+        ytdRevenue: parseFloat(ytdRevenue.toFixed(2)),
+        ytdSales: ytdSales.length,
         avgGrowthRate: parseFloat(avgGrowthRate.toFixed(2)),
         pricePerKg: parseFloat(pricePerKg.toFixed(2)),
         avgAgeAtSale: parseFloat(avgAgeAtSale.toFixed(1)),
@@ -465,8 +532,50 @@ analytics.get('/trends', async (c) => {
       };
     }
 
+    // Calculate herd size over last 12 months
+    const herdSizeData = [];
+    const birthsVsSalesData = [];
+
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthNum = date.getMonth();
+      const year = date.getFullYear();
+      const monthName = months[monthNum];
+      const monthKey = `${year}-${(monthNum + 1).toString().padStart(2, '0')}`;
+
+      // Count herd size (approximate - cattle born by end of month, not sold/died by end of month)
+      const endOfMonth = new Date(year, monthNum + 1, 0);
+      const herdSize = allCattle.filter(animal => {
+        const birthDate = new Date(animal.dob);
+        if (birthDate > endOfMonth) return false;
+
+        // Check if sold or died before month end
+        const saleEvent = allSales.find(s => s.animalId === animal.id);
+        if (saleEvent && new Date(saleEvent.eventDate) <= endOfMonth) return false;
+
+        return true;
+      }).length;
+
+      // Count births and sales in this month
+      const births = allCalvings.filter(c => {
+        const calvingDate = new Date(c.calvingDate);
+        return calvingDate.getMonth() === monthNum && calvingDate.getFullYear() === year;
+      }).length;
+
+      const sales = allSales.filter(s => {
+        const saleDate = new Date(s.eventDate);
+        return s.eventType === 'Sold' && saleDate.getMonth() === monthNum && saleDate.getFullYear() === year;
+      }).length;
+
+      herdSizeData.push({ month: monthName, count: herdSize });
+      birthsVsSalesData.push({ month: monthName, births, sales });
+    }
+
     return c.json({
       data: {
+        herdSize: herdSizeData,
+        birthsVsSales: birthsVsSalesData,
         yearlyTrends: Object.values(yearlyTrends),
         monthlyTrends: Object.values(monthlyTrends),
         currentYear,

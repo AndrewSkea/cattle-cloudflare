@@ -46,7 +46,12 @@ export default function DashboardPage() {
       setLoading(true)
       setError(null)
       const response: any = await apiClient.getDashboardStats()
-      setStats(response.data || response)
+      const data = response.data || response
+      // Map API field names to component expectations
+      setStats({
+        ...data,
+        activeBreedingFemales: data.activeBreedingFemales || data.breedingFemales || 0,
+      })
     } catch (err: any) {
       console.error('Failed to load dashboard:', err)
       setError(err.message || 'Failed to load dashboard data')
@@ -73,18 +78,18 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Dashboard
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-sm md:text-base text-muted-foreground mt-1 md:mt-2">
             Overview of your cattle management system
           </p>
         </div>
-        <div className="text-sm text-gray-500">
+        <div className="text-xs md:text-sm text-gray-500">
           Last updated: {format(new Date(), 'PPpp')}
         </div>
       </div>
@@ -138,7 +143,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Link
@@ -175,7 +180,7 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Calving Events */}
-        <div className="bg-white rounded-lg shadow-medium border-0 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 overflow-hidden">
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Recent Calving Events</h2>
@@ -233,7 +238,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Upcoming Calving Predictions */}
-        <div className="bg-white rounded-lg shadow-medium border-0 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 overflow-hidden">
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Upcoming Calvings</h2>
@@ -258,7 +263,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-green-600">{prediction.daysUntil}</p>
+                      <p className="text-xl md:text-2xl font-bold text-green-600">{prediction.daysUntil}</p>
                       <p className="text-xs text-gray-500">days</p>
                     </div>
                   </div>
@@ -270,7 +275,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Herd Composition Chart */}
-      <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-6">Herd Composition by Breed</h2>
         <PieChart
           data={stats?.herdComposition || []}

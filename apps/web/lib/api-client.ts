@@ -2,7 +2,7 @@
  * API Client for Cloudflare Worker Backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cattle-management-api.andrewskea-as.workers.dev';
 
 export class ApiClient {
   private baseUrl: string;
@@ -210,8 +210,21 @@ export class ApiClient {
   }
 
   // Health endpoints
+  async getHealthRecordsList(params?: { animalId?: string; eventType?: string }) {
+    const query = new URLSearchParams(params as Record<string, string>).toString();
+    return this.request(`/api/health${query ? `?${query}` : ''}`);
+  }
+
+  async getHealthSummary() {
+    return this.request('/api/health/summary');
+  }
+
+  async getHealthTypes() {
+    return this.request('/api/health/types');
+  }
+
   async getHealthRecords(cattleId: number) {
-    return this.request(`/api/health/cattle/${cattleId}`);
+    return this.request(`/api/health/animal/${cattleId}`);
   }
 
   async createHealthRecord(data: any) {

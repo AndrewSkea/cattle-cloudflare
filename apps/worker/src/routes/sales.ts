@@ -111,6 +111,14 @@ sales.get('/', async (c) => {
         });
 
         return {
+          id: sale.id,
+          cattleId: sale.animalId,
+          cattleTag: animal?.tagNo || 'Unknown',
+          saleDate: sale.eventDate,
+          salePrice: sale.salePrice || 0,
+          weight: sale.weightKg,
+          buyer: sale.notes, // Using notes as buyer field for now
+          notes: sale.notes,
           ...sale,
           animal,
         };
@@ -124,6 +132,76 @@ sales.get('/', async (c) => {
   } catch (error) {
     console.error('Error fetching sales:', error);
     return c.json({ error: 'Failed to fetch sale events' }, 500);
+  }
+});
+
+/**
+ * GET /api/sales/metrics
+ * Sales metrics for the financials page
+ */
+sales.get('/metrics', async (c) => {
+  const db = c.get('db');
+  const { period } = c.req.query();
+
+  try {
+    // Get all sales
+    const allSales = await db.select().from(schema.saleEvents);
+    const sold = allSales.filter(s => s.eventType === 'Sold');
+
+    // Calculate totals
+    const totalRevenue = sold.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+    const totalWeight = sold.reduce((sum, s) => sum + (s.weightKg || 0), 0);
+    const avgWeight = sold.length > 0 ? totalWeight / sold.length : 0;
+    const avgPrice = sold.length > 0 ? totalRevenue / sold.length : 0;
+    const avgPricePerKg = avgWeight > 0 ? avgPrice / avgWeight : 0;
+
+    // Calculate YTD metrics
+    const currentYear = new Date().getFullYear();
+    const ytdStartDate = `${currentYear}-01-01`;
+    const ytdSales = sold.filter(s => s.eventDate >= ytdStartDate);
+    const ytdRevenue = ytdSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+
+    // Monthly revenue for last 12 months
+    const monthlyRevenue = [];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthNum = date.getMonth();
+      const year = date.getFullYear();
+      const monthName = months[monthNum];
+
+      const monthSales = sold.filter(s => {
+        const saleDate = new Date(s.eventDate);
+        return saleDate.getMonth() === monthNum && saleDate.getFullYear() === year;
+      });
+
+      const revenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+
+      monthlyRevenue.push({
+        month: monthName,
+        revenue: parseFloat(revenue.toFixed(2)),
+        count: monthSales.length,
+      });
+    }
+
+    return c.json({
+      data: {
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+        totalSales: sold.length,
+        avgPrice: parseFloat(avgPrice.toFixed(2)),
+        avgWeight: parseFloat(avgWeight.toFixed(2)),
+        totalWeight: parseFloat(totalWeight.toFixed(2)),
+        avgPricePerKg: parseFloat(avgPricePerKg.toFixed(2)),
+        ytdRevenue: parseFloat(ytdRevenue.toFixed(2)),
+        ytdSales: ytdSales.length,
+        monthlyRevenue,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching sales metrics:', error);
+    return c.json({ error: 'Failed to fetch sales metrics' }, 500);
   }
 });
 

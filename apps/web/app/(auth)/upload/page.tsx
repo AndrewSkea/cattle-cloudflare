@@ -34,7 +34,7 @@ export default function UploadPage() {
   return (
     <div className="container mx-auto p-6 space-y-8 max-w-4xl">
       <div>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Bulk Upload
         </h1>
         <p className="text-muted-foreground mt-2">
@@ -43,7 +43,7 @@ export default function UploadPage() {
       </div>
 
       {/* Upload Card */}
-      <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-2">Upload File</h2>
         <p className="text-sm text-muted-foreground mb-4">
           Supported formats: .xlsx, .csv

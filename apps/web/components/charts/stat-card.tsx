@@ -13,7 +13,7 @@ interface StatCardProps {
 export function StatCard({ title, value, description, trend, icon, loading }: StatCardProps) {
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <div className="animate-pulse">
           <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
           <div className="h-8 bg-gray-200 rounded w-3/4 mb-2"></div>
@@ -24,7 +24,7 @@ export function StatCard({ title, value, description, trend, icon, loading }: St
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-soft border-0 p-6 hover:shadow-medium transition-shadow">
+    <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6 hover:shadow-medium transition-shadow">
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>

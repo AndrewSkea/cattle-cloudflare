@@ -25,9 +25,9 @@ export default function LineagePage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       <div>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Family Lineages
         </h1>
         <p className="text-muted-foreground mt-2">
@@ -36,7 +36,7 @@ export default function LineagePage() {
       </div>
 
       {/* Foundation Mothers */}
-      <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <h2 className="text-2xl font-semibold mb-4">Foundation Mothers</h2>
         {loading ? (
           <p className="text-center py-8 text-muted-foreground">Loading...</p>
@@ -47,7 +47,7 @@ export default function LineagePage() {
             {mothers.map((mother: any) => (
               <Link
                 key={mother.cattle.id}
-                href={`/cattle/${mother.cattle.id}`}
+                href={`/cattle/detail?id=${mother.cattle.id}`}
                 className="block p-6 bg-gray-50 rounded-lg hover:shadow-lg transition-shadow border border-gray-200"
               >
                 <div className="space-y-2">

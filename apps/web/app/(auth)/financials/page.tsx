@@ -129,11 +129,11 @@ export default function FinancialsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Financial Management
           </h1>
           <p className="text-muted-foreground mt-2">
@@ -202,35 +202,35 @@ export default function FinancialsPage() {
 
       {/* Performance Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
           <h2 className="text-lg font-semibold mb-4">Year to Date Performance</h2>
           <div className="space-y-4">
             <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
               <span className="text-gray-600">YTD Revenue</span>
-              <span className="text-2xl font-bold text-green-600">
+              <span className="text-xl md:text-2xl font-bold text-green-600">
                 £{metrics?.ytdRevenue?.toLocaleString() || 0}
               </span>
             </div>
             <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
               <span className="text-gray-600">YTD Sales Count</span>
-              <span className="text-2xl font-bold text-blue-600">
+              <span className="text-xl md:text-2xl font-bold text-blue-600">
                 {metrics?.ytdSales || 0}
               </span>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
           <h2 className="text-lg font-semibold mb-4">Weight Statistics</h2>
           <div className="space-y-4">
             <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
               <span className="text-gray-600">Total Weight Sold</span>
-              <span className="text-2xl font-bold text-purple-600">
+              <span className="text-xl md:text-2xl font-bold text-purple-600">
                 {metrics?.totalWeight?.toLocaleString() || 0} kg
               </span>
             </div>
             <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
               <span className="text-gray-600">Avg Weight per Head</span>
-              <span className="text-2xl font-bold text-orange-600">
+              <span className="text-xl md:text-2xl font-bold text-orange-600">
                 {metrics?.avgWeight?.toFixed(0) || 0} kg
               </span>
             </div>
@@ -239,7 +239,7 @@ export default function FinancialsPage() {
       </div>
 
       {/* Revenue Trends Chart */}
-      <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-6">Revenue Trends (Last 12 Months)</h2>
         <LineChart
           data={metrics?.monthlyRevenue || []}
@@ -254,7 +254,7 @@ export default function FinancialsPage() {
       </div>
 
       {/* Sales Records Table */}
-      <div className="bg-white rounded-lg shadow-medium border-0 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 overflow-hidden">
         <div className="p-6 border-b">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Sales Records</h2>

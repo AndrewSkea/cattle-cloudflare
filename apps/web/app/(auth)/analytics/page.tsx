@@ -89,10 +89,10 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Analytics & Reports
         </h1>
         <p className="text-muted-foreground mt-2">
@@ -102,8 +102,8 @@ export default function AnalyticsPage() {
 
       {/* Herd Statistics Section */}
       <section>
-        <h2 className="text-2xl font-bold mb-4">Herd Statistics</h2>
-        <div className="bg-white rounded-lg shadow-soft border-0 p-6 mb-6">
+        <h2 className="text-xl md:text-2xl font-bold mb-4">Herd Statistics</h2>
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6 mb-6">
           <StatCard
             title="Total Herd Size"
             value={herdStats?.totalCount || 0}
@@ -112,7 +112,7 @@ export default function AnalyticsPage() {
           />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">By Breed</h3>
             <PieChart
               data={herdStats?.byBreed || []}
@@ -120,7 +120,7 @@ export default function AnalyticsPage() {
               loading={loading}
             />
           </div>
-          <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">By Sex</h3>
             <PieChart
               data={herdStats?.bySex || []}
@@ -129,7 +129,7 @@ export default function AnalyticsPage() {
               colors={['#3b82f6', '#ec4899']}
             />
           </div>
-          <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">By Age Group</h3>
             <PieChart
               data={herdStats?.byAgeGroup || []}
@@ -143,7 +143,7 @@ export default function AnalyticsPage() {
 
       {/* Breeding Metrics Section */}
       <section>
-        <h2 className="text-2xl font-bold mb-4">Breeding Performance</h2>
+        <h2 className="text-xl md:text-2xl font-bold mb-4">Breeding Performance</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <StatCard
             title="Calving Rate"
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
 
       {/* Financial Summary Section */}
       <section>
-        <h2 className="text-2xl font-bold mb-4">Financial Overview</h2>
+        <h2 className="text-xl md:text-2xl font-bold mb-4">Financial Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <StatCard
             title="Total Revenue"
@@ -242,35 +242,35 @@ export default function AnalyticsPage() {
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-          <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-2">Year to Date</h3>
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <p className="text-sm text-gray-600">Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl md:text-2xl font-bold text-gray-900">
                   £{financialSummary?.ytdRevenue?.toLocaleString() || 0}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Sales Count</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl md:text-2xl font-bold text-gray-900">
                   {financialSummary?.ytdSales || 0}
                 </p>
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-soft border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-2">Performance Metrics</h3>
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <p className="text-sm text-gray-600">Avg Weight</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl md:text-2xl font-bold text-gray-900">
                   {financialSummary?.avgWeight ? `${financialSummary.avgWeight.toFixed(0)} kg` : 'N/A'}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Price per kg</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl md:text-2xl font-bold text-gray-900">
                   {financialSummary?.avgPricePerHead && financialSummary?.avgWeight
                     ? `£${(financialSummary.avgPricePerHead / financialSummary.avgWeight).toFixed(2)}`
                     : 'N/A'}
@@ -283,9 +283,9 @@ export default function AnalyticsPage() {
 
       {/* Trend Charts Section */}
       <section>
-        <h2 className="text-2xl font-bold mb-4">Trends</h2>
+        <h2 className="text-xl md:text-2xl font-bold mb-4">Trends</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">Herd Size Over Time</h3>
             <LineChart
               data={trends?.herdSize || []}
@@ -297,7 +297,7 @@ export default function AnalyticsPage() {
               loading={loading}
             />
           </div>
-          <div className="bg-white rounded-lg shadow-medium border-0 p-6">
+          <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">Births vs Sales</h3>
             <LineChart
               data={trends?.birthsVsSales || []}

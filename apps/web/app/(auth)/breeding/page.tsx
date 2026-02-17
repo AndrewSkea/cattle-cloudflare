@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { StatCard } from '@/components/charts/stat-card'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns'
 
 interface ServiceRecord {
   id: number
@@ -43,6 +43,7 @@ export default function BreedingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [formData, setFormData] = useState({
     cattleId: '',
     serviceDate: format(new Date(), 'yyyy-MM-dd'),
@@ -120,10 +121,10 @@ export default function BreedingPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Breeding Management
         </h1>
         <p className="text-muted-foreground mt-2">
@@ -160,7 +161,7 @@ export default function BreedingPage() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-lg shadow-medium border-0 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 overflow-hidden">
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px">
             <button
@@ -407,13 +408,124 @@ export default function BreedingPage() {
         {/* Breeding Calendar Tab */}
         {activeTab === 'calendar' && (
           <div className="p-6">
-            <h2 className="text-lg font-semibold mb-6">Breeding Calendar</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <p className="text-gray-500 mb-2">Calendar view coming soon</p>
-              <p className="text-sm text-gray-400">
-                This will display services and expected calvings in a monthly calendar format
-              </p>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold">Breeding Calendar</h2>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <span className="text-sm font-medium text-gray-900 min-w-[140px] text-center">
+                  {format(calendarMonth, 'MMMM yyyy')}
+                </span>
+                <button
+                  onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setCalendarMonth(new Date())}
+                  className="text-xs text-green-600 hover:text-green-700 font-medium px-2 py-1 rounded hover:bg-green-50"
+                >
+                  Today
+                </button>
+              </div>
             </div>
+
+            {/* Legend */}
+            <div className="flex gap-4 mb-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                <span className="text-gray-600">Service</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <span className="text-gray-600">Expected Calving</span>
+              </div>
+            </div>
+
+            {/* Calendar Grid */}
+            {(() => {
+              const monthStart = startOfMonth(calendarMonth)
+              const monthEnd = endOfMonth(calendarMonth)
+              const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+              const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+              const days = eachDayOfInterval({ start: calStart, end: calEnd })
+              const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+              // Map events to dates
+              const servicesByDate: Record<string, typeof services> = {}
+              services.forEach(s => {
+                const key = s.serviceDate.split('T')[0]
+                if (!servicesByDate[key]) servicesByDate[key] = []
+                servicesByDate[key].push(s)
+              })
+
+              const predictionsByDate: Record<string, typeof predictions> = {}
+              predictions.forEach(p => {
+                const key = p.expectedDate.split('T')[0]
+                if (!predictionsByDate[key]) predictionsByDate[key] = []
+                predictionsByDate[key].push(p)
+              })
+
+              return (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Day headers */}
+                  <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+                    {weekDays.map(day => (
+                      <div key={day} className="px-2 py-2 text-xs font-medium text-gray-500 text-center">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Day cells */}
+                  <div className="grid grid-cols-7">
+                    {days.map((day, i) => {
+                      const dateKey = format(day, 'yyyy-MM-dd')
+                      const dayServices = servicesByDate[dateKey] || []
+                      const dayPredictions = predictionsByDate[dateKey] || []
+                      const isCurrentMonth = isSameMonth(day, calendarMonth)
+                      const isToday = isSameDay(day, new Date())
+
+                      return (
+                        <div
+                          key={i}
+                          className={`min-h-[80px] p-1.5 border-b border-r border-gray-100 ${
+                            !isCurrentMonth ? 'bg-gray-50/50' : ''
+                          } ${isToday ? 'bg-green-50/50' : ''}`}
+                        >
+                          <div className={`text-xs mb-1 ${
+                            isToday ? 'font-bold text-green-700' :
+                            !isCurrentMonth ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                            {format(day, 'd')}
+                          </div>
+                          <div className="space-y-0.5">
+                            {dayServices.map((s, j) => (
+                              <div key={`s-${j}`} className="text-[10px] px-1 py-0.5 bg-blue-100 text-blue-700 rounded truncate">
+                                {s.cattleTag}
+                              </div>
+                            ))}
+                            {dayPredictions.map((p, j) => (
+                              <div key={`p-${j}`} className="text-[10px] px-1 py-0.5 bg-green-100 text-green-700 rounded truncate">
+                                {p.cattleTag}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
 

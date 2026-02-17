@@ -12,6 +12,23 @@ import type { DrizzleD1Database } from '../db/client';
 
 const cattle = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
 
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Convert size integer to human-readable label
+ * 1 = Large, 2 = Med-Large, 3 = Med-Small, 4 = Small
+ */
+function getSizeLabel(size: number | null): string | null {
+  if (size === null) return null;
+  const sizeMap: Record<number, string> = {
+    1: 'Large',
+    2: 'Med-Large',
+    3: 'Med-Small',
+    4: 'Small',
+  };
+  return sizeMap[size] || null;
+}
+
 // ==================== VALIDATION SCHEMAS ====================
 
 const createCattleSchema = z.object({
@@ -32,11 +49,11 @@ const updateCattleSchema = createCattleSchema.partial();
 
 /**
  * GET /api/cattle
- * List all cattle with optional filters
+ * List all cattle with optional filters and sorting
  */
 cattle.get('/', async (c) => {
   const db = c.get('db');
-  const { search, breed, sex, onFarm } = c.req.query();
+  const { search, breed, sex, onFarm, sortBy, order } = c.req.query();
 
   try {
     let query = db.select().from(schema.cattle);
@@ -69,10 +86,46 @@ cattle.get('/', async (c) => {
       query = query.where(and(...conditions));
     }
 
-    const results = await query.orderBy(schema.cattle.managementTag);
+    // Apply sorting
+    let results = await query;
+
+    // Sort in memory if sortBy is specified
+    if (sortBy) {
+      results.sort((a, b) => {
+        let aVal: any = a[sortBy as keyof typeof a];
+        let bVal: any = b[sortBy as keyof typeof b];
+
+        // Handle null values
+        if (aVal === null) return 1;
+        if (bVal === null) return -1;
+
+        // For size, reverse the comparison (1=large, 4=small)
+        if (sortBy === 'size') {
+          const comparison = (aVal as number) - (bVal as number);
+          return order === 'desc' ? comparison : -comparison;
+        }
+
+        // For other fields
+        const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        return order === 'desc' ? -comparison : comparison;
+      });
+    } else {
+      // Default sort by management tag
+      results.sort((a, b) => {
+        const aTag = a.managementTag || a.tagNo;
+        const bTag = b.managementTag || b.tagNo;
+        return aTag.localeCompare(bTag);
+      });
+    }
+
+    // Add size labels to results
+    const resultsWithLabels = results.map(cattle => ({
+      ...cattle,
+      sizeLabel: getSizeLabel(cattle.size),
+    }));
 
     return c.json({
-      data: results,
+      data: resultsWithLabels,
       count: results.length,
     });
   } catch (error) {
@@ -114,7 +167,13 @@ cattle.get('/:id', async (c) => {
       return c.json({ error: 'Cattle not found' }, 404);
     }
 
-    return c.json({ data: cattleRecord });
+    // Add size label
+    const recordWithLabel = {
+      ...cattleRecord,
+      sizeLabel: getSizeLabel(cattleRecord.size),
+    };
+
+    return c.json({ data: recordWithLabel });
   } catch (error) {
     console.error('Error fetching cattle:', error);
     return c.json({ error: 'Failed to fetch cattle' }, 500);
