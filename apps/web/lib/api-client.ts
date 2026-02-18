@@ -250,6 +250,98 @@ export class ApiClient {
       method: 'DELETE',
     });
   }
+
+  async getWeightHistory(cattleId: number) {
+    return this.request(`/api/health/animal/${cattleId}/weights`);
+  }
+
+  async createCalvingWithCalf(data: {
+    motherId: number;
+    calvingDate: string;
+    calfTagNo: string;
+    calfSex?: string;
+    sire?: string;
+    sireType?: 'natural' | 'ai';
+    notes?: string;
+  }) {
+    return this.request('/api/calvings/with-calf', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async pronounceDead(id: number, data: { date?: string; notes?: string }) {
+    return this.updateCattle(id, {
+      onFarm: false,
+      currentStatus: 'Dead',
+      notes: data.notes || undefined,
+    });
+  }
+  // Fields endpoints
+  async getFields() {
+    return this.request('/api/fields');
+  }
+
+  async getFieldById(id: number) {
+    return this.request(`/api/fields/${id}`);
+  }
+
+  async createField(data: any) {
+    return this.request('/api/fields', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateField(id: number, data: any) {
+    return this.request(`/api/fields/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteField(id: number) {
+    return this.request(`/api/fields/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async assignCattleToField(fieldId: number, data: { cattleIds: number[]; assignedDate: string }) {
+    return this.request(`/api/fields/${fieldId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeCattleFromField(fieldId: number, data: { cattleIds: number[]; removedDate?: string }) {
+    return this.request(`/api/fields/${fieldId}/remove`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getFieldHistory(fieldId: number) {
+    return this.request(`/api/fields/${fieldId}/history`);
+  }
+
+  async getCattleMovements(cattleId: number) {
+    return this.request(`/api/cattle/${cattleId}/movements`);
+  }
+
+  // Batch operations
+  async batchUpdateStatus(ids: number[], currentStatus: string, onFarm?: boolean) {
+    return this.request('/api/cattle/batch-update-status', {
+      method: 'POST',
+      body: JSON.stringify({ ids, currentStatus, onFarm }),
+    });
+  }
+
+  async batchSell(sales: Array<{ animalId: number; eventDate: string; weightKg?: number; salePrice?: number; notes?: string }>) {
+    return this.request('/api/sales/batch', {
+      method: 'POST',
+      body: JSON.stringify({ sales }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -4,7 +4,7 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { eq, like, or, and } from 'drizzle-orm';
+import { eq, like, or, and, desc, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
 import type { Env } from '../types';
@@ -275,6 +275,71 @@ cattle.delete('/:id', async (c) => {
   } catch (error) {
     console.error('Error deleting cattle:', error);
     return c.json({ error: 'Failed to delete cattle' }, 500);
+  }
+});
+
+/**
+ * GET /api/cattle/:id/movements
+ * Get field movement history for a specific animal
+ */
+cattle.get('/:id/movements', async (c) => {
+  const db = c.get('db');
+  const id = parseInt(c.req.param('id'));
+
+  if (isNaN(id)) {
+    return c.json({ error: 'Invalid ID' }, 400);
+  }
+
+  try {
+    const movements = await db.query.fieldAssignments.findMany({
+      where: eq(schema.fieldAssignments.cattleId, id),
+      with: { field: true },
+      orderBy: [desc(schema.fieldAssignments.assignedDate)],
+    });
+
+    return c.json({ data: movements });
+  } catch (error) {
+    console.error('Error fetching cattle movements:', error);
+    return c.json({ error: 'Failed to fetch cattle movements' }, 500);
+  }
+});
+
+/**
+ * POST /api/cattle/batch-update-status
+ * Update status for multiple cattle at once
+ */
+const batchUpdateStatusSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1),
+  currentStatus: z.string().min(1),
+  onFarm: z.boolean().optional(),
+});
+
+cattle.post('/batch-update-status', zValidator('json', batchUpdateStatusSchema), async (c) => {
+  const db = c.get('db');
+  const { ids, currentStatus, onFarm } = c.req.valid('json');
+
+  try {
+    const updateData: any = {
+      currentStatus,
+      updatedAt: new Date().toISOString(),
+    };
+    if (onFarm !== undefined) {
+      updateData.onFarm = onFarm;
+    }
+
+    let updated = 0;
+    for (const id of ids) {
+      const [result] = await db.update(schema.cattle)
+        .set(updateData)
+        .where(eq(schema.cattle.id, id))
+        .returning();
+      if (result) updated++;
+    }
+
+    return c.json({ data: { updated, total: ids.length } });
+  } catch (error) {
+    console.error('Error batch updating cattle:', error);
+    return c.json({ error: 'Failed to batch update cattle' }, 500);
   }
 });
 

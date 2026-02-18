@@ -7,6 +7,16 @@ import { apiClient } from '@/lib/api-client'
 import { format } from 'date-fns'
 import FamilyTree from '@/components/family-tree'
 import FamilyStats from '@/components/family-stats'
+import {
+  useCattleActions,
+  AddChildModal,
+  PronounceDeadModal,
+  AddVaccineModal,
+  AddMedicationModal,
+  AddWeightModal,
+  AddNotesModal,
+} from '@/components/cattle-actions'
+import type { CattleAction } from '@/components/cattle-actions'
 
 interface CattleDetail {
   id: number
@@ -31,6 +41,15 @@ interface CattleDetail {
 
 type TabId = 'info' | 'family' | 'health' | 'history'
 
+const actionButtons: Array<{ action: CattleAction; label: string; icon: string; color: string }> = [
+  { action: 'addChild', label: 'Add Child', icon: '🐄', color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+  { action: 'pronounceDead', label: 'Pronounce Dead', icon: '✝', color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
+  { action: 'addVaccine', label: 'Vaccine', icon: '💉', color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+  { action: 'addMedication', label: 'Medication', icon: '💊', color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+  { action: 'addWeight', label: 'Weight', icon: '⚖', color: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100' },
+  { action: 'addNotes', label: 'Notes', icon: '📝', color: 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100' },
+]
+
 function CattleDetailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -49,10 +68,12 @@ function CattleDetailContent() {
   const [familyLoading, setFamilyLoading] = useState(false)
   const familyLoadedRef = useRef(false)
 
+  // Cattle actions
+  const { activeModal, selectedAnimal, openAction, closeAction } = useCattleActions()
+
   useEffect(() => {
     if (id) {
       loadCattleDetails()
-      // Reset family data when navigating to a different animal
       familyLoadedRef.current = false
       setTreeData(null)
       setStatsData(null)
@@ -60,7 +81,6 @@ function CattleDetailContent() {
     }
   }, [id])
 
-  // Lazy load family data when the family tab is first activated
   useEffect(() => {
     if (activeTab === 'family' && !familyLoadedRef.current && id) {
       familyLoadedRef.current = true
@@ -112,6 +132,10 @@ function CattleDetailContent() {
     router.push(`/cattle/detail?id=${newId}`)
   }
 
+  const handleActionSuccess = () => {
+    loadCattleDetails()
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -159,6 +183,8 @@ function CattleDetailContent() {
     ...(isFemale ? [{ id: 'history' as TabId, label: 'History' }] : []),
   ]
 
+  const animalRef = { id: cattle.id, tagNo: cattle.tagNo, managementTag: cattle.managementTag }
+
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
@@ -182,7 +208,7 @@ function CattleDetailContent() {
               </span>
             ) : (
               <span className="px-3 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-800">
-                Sold
+                {cattle.currentStatus === 'Dead' ? 'Dead' : 'Sold'}
               </span>
             )}
           </div>
@@ -190,6 +216,20 @@ function CattleDetailContent() {
             Official Tag: {cattle.tagNo}
           </p>
         </div>
+      </div>
+
+      {/* Quick Action Buttons */}
+      <div className="flex flex-wrap gap-2">
+        {actionButtons.map((btn) => (
+          <button
+            key={btn.action}
+            onClick={() => openAction(btn.action, animalRef)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${btn.color}`}
+          >
+            <span>{btn.icon}</span>
+            {btn.label}
+          </button>
+        ))}
       </div>
 
       {/* Tab Bar */}
@@ -233,6 +273,14 @@ function CattleDetailContent() {
       {activeTab === 'history' && isFemale && (
         <HistoryTab cattle={cattle} />
       )}
+
+      {/* Action Modals */}
+      <AddChildModal open={activeModal === 'addChild'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
+      <PronounceDeadModal open={activeModal === 'pronounceDead'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
+      <AddVaccineModal open={activeModal === 'addVaccine'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
+      <AddMedicationModal open={activeModal === 'addMedication'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
+      <AddWeightModal open={activeModal === 'addWeight'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
+      <AddNotesModal open={activeModal === 'addNotes'} onClose={closeAction} animal={selectedAnimal} onSuccess={handleActionSuccess} />
     </div>
   )
 }
@@ -293,7 +341,7 @@ function InfoTab({ cattle }: { cattle: CattleDetail }) {
         {cattle.notes && (
           <div className="mt-6 pt-6 border-t">
             <p className="text-sm text-gray-600 mb-2">Notes</p>
-            <p className="text-gray-900">{cattle.notes}</p>
+            <p className="text-gray-900 whitespace-pre-line">{cattle.notes}</p>
           </div>
         )}
       </div>
@@ -405,33 +453,128 @@ function FamilyTab({
 /* Health Tab                                                          */
 /* ------------------------------------------------------------------ */
 function HealthTab({ cattle }: { cattle: CattleDetail }) {
-  if (!cattle.healthEvents || cattle.healthEvents.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold mb-4">Health Records</h2>
-        <p className="text-sm text-gray-500">No health records found for this animal.</p>
-      </div>
-    )
+  const [weights, setWeights] = useState<Array<{ date: string; weight: number }>>([])
+  const [weightsLoading, setWeightsLoading] = useState(true)
+
+  useEffect(() => {
+    loadWeights()
+  }, [cattle.id])
+
+  const loadWeights = async () => {
+    try {
+      setWeightsLoading(true)
+      const res: any = await apiClient.getWeightHistory(cattle.id)
+      setWeights((res.data || []).filter((w: any) => w.weight != null))
+    } catch {
+      // No weights is fine
+    } finally {
+      setWeightsLoading(false)
+    }
   }
 
+  const hasHealthEvents = cattle.healthEvents && cattle.healthEvents.length > 0
+
   return (
-    <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
-      <h2 className="text-xl font-semibold mb-4">Health Records</h2>
-      <div className="space-y-4">
-        {cattle.healthEvents.map((record: any) => (
-          <div key={record.id} className="border-l-4 border-green-600 pl-4 py-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-medium text-gray-900">{record.eventType}</p>
-                <p className="text-sm text-gray-600 mt-1">{record.description}</p>
+    <div className="space-y-6">
+      {/* Weight Chart */}
+      {!weightsLoading && weights.length > 0 && (
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold mb-4">Weight History</h2>
+          <WeightChart weights={weights} />
+        </div>
+      )}
+
+      {/* Health Records */}
+      <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
+        <h2 className="text-xl font-semibold mb-4">Health Records</h2>
+        {!hasHealthEvents ? (
+          <p className="text-sm text-gray-500">No health records found for this animal.</p>
+        ) : (
+          <div className="space-y-4">
+            {cattle.healthEvents.map((record: any) => (
+              <div key={record.id} className="border-l-4 border-green-600 pl-4 py-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{record.eventType}</p>
+                    <p className="text-sm text-gray-600 mt-1">{record.description}</p>
+                    {record.numericValue != null && (
+                      <p className="text-sm font-medium text-green-700 mt-1">{record.numericValue} kg</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">{format(new Date(record.eventDate), 'MMM dd, yyyy')}</p>
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-500">{format(new Date(record.eventDate), 'MMM dd, yyyy')}</p>
-              </div>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Weight Chart (simple SVG)                                           */
+/* ------------------------------------------------------------------ */
+function WeightChart({ weights }: { weights: Array<{ date: string; weight: number }> }) {
+  if (weights.length === 0) return null
+
+  const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date))
+  const values = sorted.map((w) => w.weight)
+  const minW = Math.min(...values)
+  const maxW = Math.max(...values)
+  const range = maxW - minW || 1
+
+  const width = 600
+  const height = 200
+  const padding = { top: 20, right: 20, bottom: 40, left: 50 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  const points = sorted.map((w, i) => ({
+    x: padding.left + (sorted.length === 1 ? chartW / 2 : (i / (sorted.length - 1)) * chartW),
+    y: padding.top + chartH - ((w.weight - minW) / range) * chartH,
+    ...w,
+  }))
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+
+  // Y-axis labels
+  const yLabels = [minW, minW + range / 2, maxW].map((v) => Math.round(v))
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-[600px]" preserveAspectRatio="xMidYMid meet">
+        {/* Y axis labels */}
+        {yLabels.map((v, i) => {
+          const y = padding.top + chartH - ((v - minW) / range) * chartH
+          return (
+            <g key={i}>
+              <line x1={padding.left} y1={y} x2={padding.left + chartW} y2={y} stroke="#e5e7eb" strokeDasharray="4" />
+              <text x={padding.left - 8} y={y + 4} textAnchor="end" className="text-[11px] fill-gray-500">{v}</text>
+            </g>
+          )
+        })}
+
+        {/* Line */}
+        <path d={linePath} fill="none" stroke="#16a34a" strokeWidth={2} />
+
+        {/* Dots */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={4} fill="#16a34a" />
+            <text x={p.x} y={height - 8} textAnchor="middle" className="text-[10px] fill-gray-500">
+              {format(new Date(p.date), 'MMM yy')}
+            </text>
+          </g>
+        ))}
+
+        {/* Y axis label */}
+        <text x={12} y={height / 2} textAnchor="middle" transform={`rotate(-90, 12, ${height / 2})`} className="text-[11px] fill-gray-500">
+          kg
+        </text>
+      </svg>
     </div>
   )
 }

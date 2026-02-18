@@ -151,6 +151,7 @@ export const healthEvents = sqliteTable('health_events', {
   eventDate: text('event_date').notNull(),        // ISO 8601 date string
   eventType: text('event_type'),                  // Type of health event (feet trimming, vaccination, etc.)
   description: text('description'),
+  numericValue: real('numeric_value'),  // For weight, temperature, etc.
 
   // Timestamps
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
@@ -158,6 +159,38 @@ export const healthEvents = sqliteTable('health_events', {
 }, (table) => ({
   animalIdx: index('idx_health_animal').on(table.animalId),
   dateIdx: index('idx_health_date').on(table.eventDate),
+}));
+
+// ==================== FIELDS TABLE ====================
+
+export const fields = sqliteTable('fields', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  fieldType: text('field_type').default('grazing'), // grazing/silage/hay/housing
+  polygon: text('polygon'), // GeoJSON string of polygon coordinates
+  centerLat: real('center_lat'),
+  centerLng: real('center_lng'),
+  area: real('area'), // hectares
+  capacity: integer('capacity'),
+  color: text('color').default('#22c55e'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// ==================== FIELD ASSIGNMENTS TABLE ====================
+
+export const fieldAssignments = sqliteTable('field_assignments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cattleId: integer('cattle_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
+  fieldId: integer('field_id').notNull().references(() => fields.id, { onDelete: 'cascade' }),
+  assignedDate: text('assigned_date').notNull(),
+  removedDate: text('removed_date'), // null = currently in field
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  cattleIdx: index('idx_assignment_cattle').on(table.cattleId),
+  fieldIdx: index('idx_assignment_field').on(table.fieldId),
 }));
 
 // ==================== RELATIONS ====================
@@ -180,6 +213,7 @@ export const cattleRelations = relations(cattle, ({ one, many }) => ({
   services: many(serviceEvents),
   sale: one(saleEvents),
   healthEvents: many(healthEvents),
+  fieldAssignments: many(fieldAssignments),
 }));
 
 export const calvingEventsRelations = relations(calvingEvents, ({ one, many }) => ({
@@ -220,6 +254,15 @@ export const healthEventsRelations = relations(healthEvents, ({ one }) => ({
   }),
 }));
 
+export const fieldsRelations = relations(fields, ({ many }) => ({
+  assignments: many(fieldAssignments),
+}));
+
+export const fieldAssignmentsRelations = relations(fieldAssignments, ({ one }) => ({
+  cattle: one(cattle, { fields: [fieldAssignments.cattleId], references: [cattle.id] }),
+  field: one(fields, { fields: [fieldAssignments.fieldId], references: [fields.id] }),
+}));
+
 // ==================== TYPE EXPORTS ====================
 
 export type Cattle = typeof cattle.$inferSelect;
@@ -236,3 +279,9 @@ export type NewSaleEvent = typeof saleEvents.$inferInsert;
 
 export type HealthEvent = typeof healthEvents.$inferSelect;
 export type NewHealthEvent = typeof healthEvents.$inferInsert;
+
+export type Field = typeof fields.$inferSelect;
+export type NewField = typeof fields.$inferInsert;
+
+export type FieldAssignment = typeof fieldAssignments.$inferSelect;
+export type NewFieldAssignment = typeof fieldAssignments.$inferInsert;

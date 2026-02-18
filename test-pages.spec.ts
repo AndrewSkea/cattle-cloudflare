@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'https://a0bb460d.cattle-management.pages.dev';
+const BASE_URL = 'https://1ea8c4f6.cattle-management.pages.dev';
 
 test.describe('Cattle Management System - All Pages', () => {
   test('Dashboard page loads and displays correctly', async ({ page }) => {

@@ -19,6 +19,7 @@ import saleRoutes from './routes/sales';
 import healthRoutes from './routes/health';
 import analyticsRoutes from './routes/analytics';
 import breedingRoutes from './routes/breeding';
+import fieldsRoutes from './routes/fields';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -78,6 +79,7 @@ app.route('/api/sales', saleRoutes);
 app.route('/api/health', healthRoutes);
 app.route('/api/analytics', analyticsRoutes);
 app.route('/api/breeding', breedingRoutes);
+app.route('/api/fields', fieldsRoutes);
 
 // 404 handler
 app.notFound((c) => {

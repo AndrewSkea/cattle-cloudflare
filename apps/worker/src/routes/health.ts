@@ -19,6 +19,7 @@ const createHealthEventSchema = z.object({
   eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   eventType: z.string().min(1, 'Event type is required'),
   description: z.string().optional(),
+  numericValue: z.number().optional(),
 });
 
 const updateHealthEventSchema = createHealthEventSchema.partial().omit({ animalId: true });
@@ -245,6 +246,45 @@ health.get('/summary', async (c) => {
   } catch (error) {
     console.error('Error fetching health summary:', error);
     return c.json({ error: 'Failed to fetch health summary' }, 500);
+  }
+});
+
+/**
+ * GET /api/health/animal/:id/weights
+ * Get weight history for a specific animal (sorted by date)
+ */
+health.get('/animal/:id/weights', async (c) => {
+  const db = c.get('db');
+  const id = parseInt(c.req.param('id'));
+
+  if (isNaN(id)) {
+    return c.json({ error: 'Invalid ID' }, 400);
+  }
+
+  try {
+    const weights = await db
+      .select()
+      .from(schema.healthEvents)
+      .where(
+        and(
+          eq(schema.healthEvents.animalId, id),
+          eq(schema.healthEvents.eventType, 'Weight')
+        )
+      )
+      .orderBy(schema.healthEvents.eventDate);
+
+    return c.json({
+      data: weights.map((w) => ({
+        id: w.id,
+        date: w.eventDate,
+        weight: w.numericValue,
+        notes: w.description,
+      })),
+      count: weights.length,
+    });
+  } catch (error) {
+    console.error('Error fetching weight history:', error);
+    return c.json({ error: 'Failed to fetch weight history' }, 500);
   }
 });
 

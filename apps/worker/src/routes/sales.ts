@@ -520,4 +520,89 @@ sales.delete('/:id', async (c) => {
   }
 });
 
+/**
+ * POST /api/sales/batch
+ * Create sale events for multiple animals at once
+ */
+const batchSaleSchema = z.object({
+  sales: z.array(z.object({
+    animalId: z.number().int().positive(),
+    eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    weightKg: z.number().positive().optional(),
+    salePrice: z.number().positive().optional(),
+    notes: z.string().optional(),
+  })).min(1),
+});
+
+sales.post('/batch', zValidator('json', batchSaleSchema), async (c) => {
+  const db = c.get('db');
+  const { sales: saleItems } = c.req.valid('json');
+
+  try {
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const item of saleItems) {
+      // Verify animal exists
+      const animal = await db.query.cattle.findFirst({
+        where: eq(schema.cattle.id, item.animalId),
+      });
+
+      if (!animal) {
+        errors.push(`Animal ${item.animalId} not found`);
+        skipped++;
+        continue;
+      }
+
+      // Skip if already has a sale event
+      const existingSale = await db.query.saleEvents.findFirst({
+        where: eq(schema.saleEvents.animalId, item.animalId),
+      });
+
+      if (existingSale) {
+        skipped++;
+        continue;
+      }
+
+      // Calculate age and derived metrics
+      const ageMonths = calculateAgeMonths(animal.dob, item.eventDate);
+      const derivedMetrics = calculateDerivedMetrics({
+        weightKg: item.weightKg,
+        salePrice: item.salePrice,
+        ageMonths,
+      });
+
+      // Create sale event
+      await db.insert(schema.saleEvents).values({
+        animalId: item.animalId,
+        eventDate: item.eventDate,
+        eventType: 'Sold',
+        ageMonths,
+        weightKg: item.weightKg,
+        salePrice: item.salePrice,
+        kgPerMonth: derivedMetrics.kgPerMonth,
+        pricePerMonth: derivedMetrics.pricePerMonth,
+        notes: item.notes,
+      });
+
+      // Update animal status
+      await db.update(schema.cattle)
+        .set({
+          onFarm: false,
+          currentStatus: 'Sold',
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(schema.cattle.id, item.animalId));
+
+      created++;
+    }
+
+    return c.json({ data: { created, skipped, errors } }, 201);
+  } catch (error) {
+    console.error('Error batch creating sales:', error);
+    return c.json({ error: 'Failed to batch create sales' }, 500);
+  }
+});
+
 export default sales;

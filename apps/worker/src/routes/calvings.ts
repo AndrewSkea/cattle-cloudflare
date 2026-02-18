@@ -261,6 +261,87 @@ calvings.post('/', zValidator('json', createCalvingSchema), async (c) => {
 });
 
 /**
+ * POST /api/calvings/with-calf
+ * Create a new calf cattle record AND a calving event atomically
+ */
+const createCalvingWithCalfSchema = z.object({
+  motherId: z.number().int().positive('Mother ID is required'),
+  calvingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  calfTagNo: z.string().min(1, 'Calf tag number is required'),
+  calfSex: z.string().optional(),
+  sire: z.string().optional(),
+  sireType: z.enum(['natural', 'ai']).optional(),
+  notes: z.string().optional(),
+});
+
+calvings.post('/with-calf', zValidator('json', createCalvingWithCalfSchema), async (c) => {
+  const db = c.get('db');
+  const data = c.req.valid('json');
+
+  try {
+    // Verify mother exists
+    const mother = await db.query.cattle.findFirst({
+      where: eq(schema.cattle.id, data.motherId),
+    });
+
+    if (!mother) {
+      return c.json({ error: 'Mother not found' }, 404);
+    }
+
+    // Parse calving date for YOB
+    const calvingYear = new Date(data.calvingDate).getFullYear();
+
+    // Create calf cattle record
+    const [newCalf] = await db
+      .insert(schema.cattle)
+      .values({
+        tagNo: data.calfTagNo,
+        yob: calvingYear,
+        dob: data.calvingDate,
+        sex: data.calfSex || null,
+        breed: mother.breed,
+        damTag: data.motherId,
+        onFarm: true,
+        currentStatus: 'Active',
+      })
+      .returning();
+
+    // Calculate days since last calving
+    const daysSinceLastCalving = await calculateDaysSinceLastCalving(
+      db,
+      data.motherId,
+      data.calvingDate
+    );
+
+    // Create calving event
+    const [newCalving] = await db
+      .insert(schema.calvingEvents)
+      .values({
+        motherId: data.motherId,
+        calfId: newCalf.id,
+        calvingDate: data.calvingDate,
+        calvingYear,
+        calvingMonth: getMonthName(data.calvingDate),
+        calfSex: data.calfSex || null,
+        sire: data.sire
+          ? (data.sireType === 'ai' ? `AI: ${data.sire}` : data.sire)
+          : null,
+        daysSinceLastCalving,
+        notes: data.notes || null,
+      })
+      .returning();
+
+    return c.json({ data: { calf: newCalf, calving: newCalving } }, 201);
+  } catch (error: any) {
+    console.error('Error creating calving with calf:', error);
+    if (error.message?.includes('UNIQUE constraint failed')) {
+      return c.json({ error: 'A cattle with this tag number already exists' }, 409);
+    }
+    return c.json({ error: 'Failed to create calving with calf' }, 500);
+  }
+});
+
+/**
  * PUT /api/calvings/:id
  * Update existing calving event
  */
