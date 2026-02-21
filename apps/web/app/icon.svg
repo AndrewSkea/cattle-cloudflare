@@ -1,26 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <g fill="#1a0a00">
-    <!-- Body -->
-    <ellipse cx="20" cy="17" rx="10" ry="7"/>
-    <!-- Neck -->
-    <rect x="10" y="12" width="6" height="8" rx="2"/>
-    <!-- Head -->
-    <ellipse cx="8" cy="15" rx="5.5" ry="5.5"/>
-    <!-- Snout -->
-    <ellipse cx="3.5" cy="17" rx="3" ry="2"/>
-    <!-- Ear -->
-    <ellipse cx="9.5" cy="8.5" rx="2.5" ry="2" transform="rotate(-20 9.5 8.5)"/>
-    <!-- Horn -->
-    <ellipse cx="12" cy="7" rx="1" ry="3" transform="rotate(25 12 7)"/>
-    <!-- Front legs -->
-    <rect x="11" y="22" width="2.5" height="8" rx="1"/>
-    <rect x="15" y="22" width="2.5" height="8" rx="1"/>
-    <!-- Back legs -->
-    <rect x="22" y="22" width="2.5" height="8" rx="1"/>
-    <rect x="26" y="22" width="2.5" height="8" rx="1"/>
-    <!-- Udder -->
-    <ellipse cx="19" cy="24" rx="5" ry="2"/>
-    <!-- Tail -->
-    <path d="M29,14 Q33,9 31,17" stroke="#1a0a00" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  </g>
+<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+  <!-- Twemoji Cow Face - CC-BY 4.0 Twitter -->
+  <!-- Ears -->
+  <path fill="#99AAB5" d="M4 8s-4 2-4 11c0 0 6-1 7-3c0 0 2-12.25-3-8zm27.995.043s4 2 4 11c0 0-6-.999-7-2.999c0 0-2-12.251 3-8.001z"/>
+  <!-- Horns -->
+  <path fill="#FFE8B6" d="M1 1c-1.01.99 1 8 5 9s4-5 3-5C5 5 3.042-1 1 1zm34.297 0c1.011.99-1 8-5 9s-4-5-3-5c4 0 5.959-6 8-4z"/>
+  <!-- Head -->
+  <path fill="#CCD6DD" d="M21.976 31h-7.951C8.488 31 4 26.512 4 20.976v-8.951C4 6.488 8.488 2 14.025 2h7.951C27.512 2 32 6.488 32 12.025v8.951C32 26.512 27.512 31 21.976 31z"/>
+  <!-- Snout -->
+  <path fill="#E6AAAA" d="M35 28c0 5.522-4.478 8-10 8H11c-5.523 0-10-2.478-10-8s4.477-10 10-10h14c5.522 0 10 4.478 10 10z"/>
+  <!-- Nostrils -->
+  <ellipse fill="#C1694F" cx="9.5" cy="26" rx="1.5" ry="3"/>
+  <ellipse fill="#C1694F" cx="26.5" cy="26" rx="1.5" ry="3"/>
+  <!-- Eyes -->
+  <path fill="#272B2B" d="M11 12s0-2 2-2s2 2 2 2v2s0 2-2 2s-2-2-2-2v-2zm10 0s0-2 2-2s2 2 2 2v2s0 2-2 2s-2-2-2-2v-2z"/>
 </svg>
