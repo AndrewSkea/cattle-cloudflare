@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Barn roof -->
+  <polygon points="1,15 16,2 31,15" fill="#8B1A1A"/>
+  <!-- Roof ridge cap -->
+  <polygon points="1,15 16,2 31,15 29,15 16,4 3,15" fill="#6B1010"/>
+  <!-- Barn body -->
+  <rect x="3" y="14" width="26" height="16" fill="#C0392B"/>
+  <!-- Left window -->
+  <rect x="6" y="18" width="5" height="4" rx="0.5" fill="#F0C040"/>
+  <!-- Right window -->
+  <rect x="21" y="18" width="5" height="4" rx="0.5" fill="#F0C040"/>
+  <!-- Door -->
+  <rect x="13" y="22" width="6" height="8" rx="0.5" fill="#7B3F00"/>
+  <!-- Door arch -->
+  <ellipse cx="16" cy="22" rx="3" ry="1.5" fill="#7B3F00"/>
+  <!-- Door cross beam -->
+  <line x1="16" y1="22" x2="16" y2="30" stroke="#5D2E00" stroke-width="0.5"/>
+  <line x1="13" y1="25" x2="19" y2="25" stroke="#5D2E00" stroke-width="0.5"/>
+</svg>
