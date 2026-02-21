@@ -30,9 +30,17 @@ interface SalesMetrics {
   monthlyRevenue: Array<{ month: string; revenue: number; count: number }>
 }
 
+interface PLData {
+  revenue: { cattleSales: number; total: number }
+  expenditure: { machineryPurchase: number; machineryRunning: number; payroll: number; fertiliser: number; seed: number; medicineVaccine: number; otherSupplies: number; total: number }
+  netMargin: number
+  categories: Array<{ name: string; amount: number }>
+}
+
 export default function FinancialsPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [metrics, setMetrics] = useState<SalesMetrics | null>(null)
+  const [pl, setPL] = useState<PLData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<'saleDate' | 'salePrice' | 'weight'>('saleDate')
@@ -48,13 +56,15 @@ export default function FinancialsPage() {
       setLoading(true)
       setError(null)
 
-      const [salesRes, metricsRes] = await Promise.all([
+      const [salesRes, metricsRes, plRes] = await Promise.all([
         apiClient.getSales({ sortBy, order: sortOrder }),
-        apiClient.getSalesMetrics({ period: '12months' })
+        apiClient.getSalesMetrics({ period: '12months' }),
+        apiClient.getFinancialPL(),
       ])
 
       setSales((salesRes as any).data || salesRes || [])
       setMetrics((metricsRes as any).data || metricsRes)
+      setPL((plRes as any).data || null)
     } catch (err: any) {
       console.error('Failed to load financial data:', err)
       setError(err.message || 'Failed to load financial data')
@@ -237,6 +247,53 @@ export default function FinancialsPage() {
           </div>
         </div>
       </div>
+
+      {/* P&L Breakdown */}
+      {pl && (
+        <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Profit & Loss</h2>
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pl.netMargin >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              Net: {pl.netMargin >= 0 ? '+' : ''}£{pl.netMargin.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Revenue */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Income</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-700">Cattle Sales</span>
+                  <span className="text-sm font-semibold text-green-700">£{pl.revenue.cattleSales.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 font-semibold">
+                  <span className="text-sm text-gray-900">Total Income</span>
+                  <span className="text-sm text-green-700">£{pl.revenue.total.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
+            </div>
+            {/* Expenditure */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Expenditure</h3>
+              <div className="space-y-1">
+                {pl.categories.filter(c => c.amount > 0).map(cat => (
+                  <div key={cat.name} className="flex justify-between items-center py-1.5 border-b border-gray-50">
+                    <span className="text-sm text-gray-600">{cat.name}</span>
+                    <span className="text-sm font-medium text-gray-800">£{cat.amount.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
+                {pl.categories.every(c => c.amount === 0) && (
+                  <p className="text-sm text-gray-400 text-center py-3">No expenditure recorded yet</p>
+                )}
+                <div className="flex justify-between items-center py-2 font-semibold mt-1">
+                  <span className="text-sm text-gray-900">Total Expenditure</span>
+                  <span className="text-sm text-red-700">£{pl.expenditure.total.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Revenue Trends Chart */}
       <div className="bg-white rounded-lg shadow-soft border border-gray-200 p-6">

@@ -428,6 +428,128 @@ export class ApiClient {
   async acceptInvite(code: string) {
     return this.request(`/api/invite/${code}/accept`, { method: 'POST' });
   }
+
+  // ==================== MACHINERY ====================
+
+  async getMachinery() {
+    return this.request('/api/machinery');
+  }
+
+  async createMachinery(data: {
+    name: string; type: string; make?: string; model?: string;
+    year?: number; purchaseDate?: string; purchasePrice?: number;
+    serialNumber?: string; notes?: string;
+  }) {
+    return this.request('/api/machinery', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getMachineryById(id: number) {
+    return this.request(`/api/machinery/${id}`);
+  }
+
+  async updateMachinery(id: number, data: Partial<{
+    name: string; type: string; make: string; model: string; year: number;
+    purchaseDate: string; purchasePrice: number; serialNumber: string;
+    status: string; soldDate: string; salePrice: number; notes: string;
+  }>) {
+    return this.request(`/api/machinery/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteMachinery(id: number) {
+    return this.request(`/api/machinery/${id}`, { method: 'DELETE' });
+  }
+
+  async getMachineryEvents(machineryId: number) {
+    return this.request(`/api/machinery/${machineryId}/events`);
+  }
+
+  async createMachineryEvent(machineryId: number, data: {
+    type: string; date: string; cost?: number; description?: string;
+    hoursOrMileage?: number; fieldId?: number; notes?: string;
+  }) {
+    return this.request(`/api/machinery/${machineryId}/events`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateMachineryEvent(machineryId: number, eventId: number, data: object) {
+    return this.request(`/api/machinery/${machineryId}/events/${eventId}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteMachineryEvent(machineryId: number, eventId: number) {
+    return this.request(`/api/machinery/${machineryId}/events/${eventId}`, { method: 'DELETE' });
+  }
+
+  // ==================== WORKERS ====================
+
+  async getWorkers() {
+    return this.request('/api/workers');
+  }
+
+  async createWorker(data: { name: string; role?: string; startDate?: string; notes?: string }) {
+    return this.request('/api/workers', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateWorker(id: number, data: Partial<{ name: string; role: string; startDate: string; endDate: string; notes: string }>) {
+    return this.request(`/api/workers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteWorker(id: number) {
+    return this.request(`/api/workers/${id}`, { method: 'DELETE' });
+  }
+
+  async getPayroll(workerId: number) {
+    return this.request(`/api/workers/${workerId}/payroll`);
+  }
+
+  async createPayrollEvent(workerId: number, data: {
+    date: string; amount: number; type: string;
+    periodStart?: string; periodEnd?: string; notes?: string;
+  }) {
+    return this.request(`/api/workers/${workerId}/payroll`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updatePayrollEvent(workerId: number, payrollId: number, data: object) {
+    return this.request(`/api/workers/${workerId}/payroll/${payrollId}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deletePayrollEvent(workerId: number, payrollId: number) {
+    return this.request(`/api/workers/${workerId}/payroll/${payrollId}`, { method: 'DELETE' });
+  }
+
+  // ==================== SUPPLIES ====================
+
+  async getSupplies(params?: { category?: string; fieldId?: number }) {
+    const q = new URLSearchParams(params as any).toString();
+    return this.request(`/api/supplies${q ? `?${q}` : ''}`);
+  }
+
+  async createSupply(data: {
+    category: string; name: string; date: string; totalCost: number;
+    quantity?: number; unit?: string; unitCost?: number;
+    supplier?: string; fieldId?: number; notes?: string;
+  }) {
+    return this.request('/api/supplies', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateSupply(id: number, data: object) {
+    return this.request(`/api/supplies/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteSupply(id: number) {
+    return this.request(`/api/supplies/${id}`, { method: 'DELETE' });
+  }
+
+  // ==================== FIELD TIMELINE ====================
+
+  async getFieldTimeline(fieldId: number) {
+    return this.request(`/api/fields/${fieldId}/timeline`);
+  }
+
+  // ==================== FINANCIALS P&L ====================
+
+  async getFinancialPL(params?: { start?: string; end?: string }) {
+    const q = new URLSearchParams(params as any).toString();
+    return this.request(`/api/analytics/financial${q ? `?${q}` : ''}`);
+  }
 }
 
 export const apiClient = new ApiClient();

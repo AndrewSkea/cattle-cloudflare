@@ -279,6 +279,105 @@ export const fieldAssignments = sqliteTable('field_assignments', {
   farmIdx: index('idx_assignment_farm').on(table.farmId),
 }));
 
+// ==================== MACHINERY TABLE ====================
+
+export const machinery = sqliteTable('machinery', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  type: text('type').notNull(), // tractor|trailer|sprayer|harvester|ATV|other
+  make: text('make'),
+  model: text('model'),
+  year: integer('year'),
+  purchaseDate: text('purchase_date'),
+  purchasePrice: real('purchase_price'),
+  serialNumber: text('serial_number'),
+  status: text('status').default('active'), // active|sold|scrapped
+  soldDate: text('sold_date'),
+  salePrice: real('sale_price'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_machinery_farm').on(table.farmId),
+}));
+
+// ==================== MACHINERY EVENTS TABLE ====================
+
+export const machineryEvents = sqliteTable('machinery_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  machineryId: integer('machinery_id').notNull().references(() => machinery.id, { onDelete: 'cascade' }),
+  fieldId: integer('field_id').references(() => fields.id, { onDelete: 'set null' }),
+  type: text('type').notNull(), // fuel|repair|service|other
+  date: text('date').notNull(),
+  cost: real('cost'),
+  description: text('description'),
+  hoursOrMileage: real('hours_or_mileage'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_machinery_events_farm').on(table.farmId),
+  machineryIdx: index('idx_machinery_events_machinery').on(table.machineryId),
+  fieldIdx: index('idx_machinery_events_field').on(table.fieldId),
+}));
+
+// ==================== WORKERS TABLE ====================
+
+export const workers = sqliteTable('workers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  role: text('role'),
+  startDate: text('start_date'),
+  endDate: text('end_date'), // null = currently employed
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_workers_farm').on(table.farmId),
+}));
+
+// ==================== PAYROLL EVENTS TABLE ====================
+
+export const payrollEvents = sqliteTable('payroll_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  workerId: integer('worker_id').notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  amount: real('amount').notNull(),
+  type: text('type').notNull(), // salary|bonus|overtime|other
+  periodStart: text('period_start'),
+  periodEnd: text('period_end'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_payroll_farm').on(table.farmId),
+  workerIdx: index('idx_payroll_worker').on(table.workerId),
+}));
+
+// ==================== SUPPLY PURCHASES TABLE ====================
+
+export const supplyPurchases = sqliteTable('supply_purchases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  fieldId: integer('field_id').references(() => fields.id, { onDelete: 'set null' }),
+  category: text('category').notNull(), // fertiliser|seed|medicine|vaccine|fuel|other
+  name: text('name').notNull(),
+  date: text('date').notNull(),
+  quantity: real('quantity'),
+  unit: text('unit'), // kg|L|units|bags|tonnes
+  unitCost: real('unit_cost'),
+  totalCost: real('total_cost').notNull(),
+  supplier: text('supplier'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_supplies_farm').on(table.farmId),
+  fieldIdx: index('idx_supplies_field').on(table.fieldId),
+  categoryIdx: index('idx_supplies_category').on(table.category),
+}));
+
 // ==================== RELATIONS ====================
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -378,6 +477,32 @@ export const fieldAssignmentsRelations = relations(fieldAssignments, ({ one }) =
   field: one(fields, { fields: [fieldAssignments.fieldId], references: [fields.id] }),
 }));
 
+export const machineryRelations = relations(machinery, ({ one, many }) => ({
+  farm: one(farms, { fields: [machinery.farmId], references: [farms.id] }),
+  events: many(machineryEvents),
+}));
+
+export const machineryEventsRelations = relations(machineryEvents, ({ one }) => ({
+  farm: one(farms, { fields: [machineryEvents.farmId], references: [farms.id] }),
+  machine: one(machinery, { fields: [machineryEvents.machineryId], references: [machinery.id] }),
+  field: one(fields, { fields: [machineryEvents.fieldId], references: [fields.id] }),
+}));
+
+export const workersRelations = relations(workers, ({ one, many }) => ({
+  farm: one(farms, { fields: [workers.farmId], references: [farms.id] }),
+  payroll: many(payrollEvents),
+}));
+
+export const payrollEventsRelations = relations(payrollEvents, ({ one }) => ({
+  farm: one(farms, { fields: [payrollEvents.farmId], references: [farms.id] }),
+  worker: one(workers, { fields: [payrollEvents.workerId], references: [workers.id] }),
+}));
+
+export const supplyPurchasesRelations = relations(supplyPurchases, ({ one }) => ({
+  farm: one(farms, { fields: [supplyPurchases.farmId], references: [farms.id] }),
+  field: one(fields, { fields: [supplyPurchases.fieldId], references: [fields.id] }),
+}));
+
 // ==================== TYPE EXPORTS ====================
 
 export type Cattle = typeof cattle.$inferSelect;
@@ -406,6 +531,21 @@ export type NewUser = typeof users.$inferInsert;
 
 export type Farm = typeof farms.$inferSelect;
 export type NewFarm = typeof farms.$inferInsert;
+
+export type Machinery = typeof machinery.$inferSelect;
+export type NewMachinery = typeof machinery.$inferInsert;
+
+export type MachineryEvent = typeof machineryEvents.$inferSelect;
+export type NewMachineryEvent = typeof machineryEvents.$inferInsert;
+
+export type Worker = typeof workers.$inferSelect;
+export type NewWorker = typeof workers.$inferInsert;
+
+export type PayrollEvent = typeof payrollEvents.$inferSelect;
+export type NewPayrollEvent = typeof payrollEvents.$inferInsert;
+
+export type SupplyPurchase = typeof supplyPurchases.$inferSelect;
+export type NewSupplyPurchase = typeof supplyPurchases.$inferInsert;
 
 export type FarmMember = typeof farmMembers.$inferSelect;
 export type NewFarmMember = typeof farmMembers.$inferInsert;

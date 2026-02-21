@@ -21,6 +21,9 @@ import {
   X,
   User,
   Settings,
+  Wrench,
+  ShoppingCart,
+  Users,
 } from 'lucide-react'
 
 const navLinks = [
@@ -30,12 +33,17 @@ const navLinks = [
   { href: '/breeding', label: 'Breeding', icon: Heart },
   { href: '/lineage', label: 'Lineage', icon: GitBranch },
   { href: '/health', label: 'Health', icon: Activity },
+  { href: '/machinery', label: 'Machinery', icon: Wrench },
+  { href: '/supplies', label: 'Supplies', icon: ShoppingCart },
   { href: '/financials', label: 'Financials', icon: PoundSterling },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/tasks', label: 'Tasks', icon: CheckSquare },
   { href: '/upload', label: 'Upload', icon: Upload },
   { href: '/settings/profile', label: 'Profile', icon: User },
   { href: '/settings/farm', label: 'Farm Settings', icon: Settings },
+]
+
+const adminNavLinks = [
+  { href: '/workers', label: 'Workers', icon: Users },
 ]
 
 export default function AuthLayout({
@@ -47,7 +55,7 @@ export default function AuthLayout({
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const { user, farms, activeFarmId, isLoading, isAuthenticated, switchFarm, logout } = useAuth()
+  const { user, farms, activeFarmId, activeRole, isLoading, isAuthenticated, switchFarm, logout } = useAuth()
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -136,7 +144,7 @@ export default function AuthLayout({
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           <ul className="space-y-1">
-            {navLinks.map((link) => {
+            {[...navLinks, ...(activeRole === 'owner' || activeRole === 'manager' ? adminNavLinks : [])].map((link) => {
               const Icon = link.icon
               const active = isActive(link.href)
               return (

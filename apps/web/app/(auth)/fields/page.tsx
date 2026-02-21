@@ -62,6 +62,9 @@ export default function FieldsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'supply' | 'machinery'>('all')
 
   const loadFields = async () => {
     try {
@@ -90,8 +93,17 @@ export default function FieldsPage() {
 
   const selectedField = fields.find((f) => f.id === selectedFieldId) || null
 
-  const handleFieldClick = useCallback((id: number) => {
+  const handleFieldClick = useCallback(async (id: number) => {
     setSelectedFieldId((prev) => (prev === id ? null : id))
+    if (id) {
+      setTimelineLoading(true)
+      setTimelineEvents([])
+      try {
+        const res: any = await apiClient.getFieldTimeline(id)
+        setTimelineEvents(res.data || [])
+      } catch { /* timeline is optional */ }
+      finally { setTimelineLoading(false) }
+    }
   }, [])
 
   const handlePolygonDrawn = useCallback(
@@ -493,6 +505,42 @@ export default function FieldsPage() {
                       <div className="text-sm">
                         <span className="text-gray-500 block mb-1">Notes</span>
                         <p className="text-gray-700">{selectedField.notes}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Field Timeline */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-gray-700">Timeline</h3>
+                      <div className="flex gap-1">
+                        {(['all', 'supply', 'machinery'] as const).map(f => (
+                          <button key={f} onClick={() => setTimelineFilter(f)}
+                            className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${timelineFilter === f ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                            {f.charAt(0).toUpperCase() + f.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {timelineLoading ? (
+                      <div className="flex justify-center py-4"><div className="animate-spin w-5 h-5 border-2 border-green-200 border-t-green-600 rounded-full" /></div>
+                    ) : (timelineEvents.filter(e => timelineFilter === 'all' || e.eventSource === timelineFilter)).length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-3">No events recorded for this field.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {timelineEvents
+                          .filter(e => timelineFilter === 'all' || e.eventSource === timelineFilter)
+                          .map((e: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${e.eventSource === 'supply' ? 'bg-green-400' : 'bg-blue-400'}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-800 truncate">
+                                  {e.name || e.description || (e.machineryName ? `${e.machineryName} — ${e.type}` : e.type)}
+                                </p>
+                                <p className="text-gray-400">{e.date}{e.totalCost ? ` · £${e.totalCost}` : e.cost ? ` · £${e.cost}` : ''}</p>
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     )}
                   </div>

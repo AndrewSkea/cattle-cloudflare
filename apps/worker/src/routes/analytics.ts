@@ -3,7 +3,7 @@
  */
 
 import { Hono } from 'hono';
-import { eq, and, sql, gte, lte, isNotNull } from 'drizzle-orm';
+import { eq, and, sql, gte, lte, isNotNull, sum } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
@@ -620,6 +620,137 @@ analytics.get('/trends', async (c) => {
     console.error('Error fetching trends:', error);
     return c.json({ error: 'Failed to fetch trends' }, 500);
   }
+});
+
+/**
+ * GET /api/analytics/financial
+ * Full P&L breakdown including machinery, payroll, and supplies
+ * Optional query params: ?start=YYYY-MM-DD&end=YYYY-MM-DD
+ */
+analytics.get('/financial', async (c) => {
+  const db = c.get('db');
+  const user = c.get('user');
+  const farmId = user.activeFarmId!;
+  const { start, end } = c.req.query();
+
+  const dateFilter = (dateCol: any) => {
+    const conditions = [eq(dateCol, dateCol)]; // always-true placeholder
+    if (start) conditions.push(gte(dateCol, start));
+    if (end) conditions.push(lte(dateCol, end));
+    return and(...conditions);
+  };
+
+  const [
+    salesRows,
+    machineryPurchaseRows,
+    machineryRunningRows,
+    payrollRows,
+    suppliesRows,
+  ] = await Promise.all([
+    // Revenue: cattle sales
+    db.select({ total: sum(schema.saleEvents.salePrice) })
+      .from(schema.saleEvents)
+      .where(and(
+        eq(schema.saleEvents.farmId, farmId),
+        eq(schema.saleEvents.eventType, 'Sold'),
+        ...(start ? [gte(schema.saleEvents.eventDate, start)] : []),
+        ...(end ? [lte(schema.saleEvents.eventDate, end)] : []),
+      )),
+
+    // Machinery: purchase events
+    db.select({ total: sum(schema.machineryEvents.cost) })
+      .from(schema.machineryEvents)
+      .where(and(
+        eq(schema.machineryEvents.farmId, farmId),
+        eq(schema.machineryEvents.type, 'repair'), // not purchase type — machinery purchase is separate
+        ...(start ? [gte(schema.machineryEvents.date, start)] : []),
+        ...(end ? [lte(schema.machineryEvents.date, end)] : []),
+      )),
+
+    // Machinery: running costs (fuel, repair, service)
+    db.select({ total: sum(schema.machineryEvents.cost) })
+      .from(schema.machineryEvents)
+      .where(and(
+        eq(schema.machineryEvents.farmId, farmId),
+        ...(start ? [gte(schema.machineryEvents.date, start)] : []),
+        ...(end ? [lte(schema.machineryEvents.date, end)] : []),
+      )),
+
+    // Payroll
+    db.select({ total: sum(schema.payrollEvents.amount) })
+      .from(schema.payrollEvents)
+      .where(and(
+        eq(schema.payrollEvents.farmId, farmId),
+        ...(start ? [gte(schema.payrollEvents.date, start)] : []),
+        ...(end ? [lte(schema.payrollEvents.date, end)] : []),
+      )),
+
+    // Supplies by category
+    db.select({
+      category: schema.supplyPurchases.category,
+      total: sum(schema.supplyPurchases.totalCost),
+    })
+      .from(schema.supplyPurchases)
+      .where(and(
+        eq(schema.supplyPurchases.farmId, farmId),
+        ...(start ? [gte(schema.supplyPurchases.date, start)] : []),
+        ...(end ? [lte(schema.supplyPurchases.date, end)] : []),
+      ))
+      .groupBy(schema.supplyPurchases.category),
+  ]);
+
+  // Also get machinery purchase costs from the machinery table itself
+  const machineryPurchasedRows = await db
+    .select({ total: sum(schema.machinery.purchasePrice) })
+    .from(schema.machinery)
+    .where(and(
+      eq(schema.machinery.farmId, farmId),
+      ...(start ? [gte(schema.machinery.purchaseDate, start)] : []),
+      ...(end ? [lte(schema.machinery.purchaseDate, end)] : []),
+    ));
+
+  const supplyMap: Record<string, number> = {};
+  for (const row of suppliesRows) {
+    if (row.category) supplyMap[row.category] = Number(row.total) || 0;
+  }
+
+  const totalRevenue = Number(salesRows[0]?.total) || 0;
+  const machineryPurchase = Number(machineryPurchasedRows[0]?.total) || 0;
+  const machineryRunning = Number(machineryRunningRows[0]?.total) || 0;
+  const payroll = Number(payrollRows[0]?.total) || 0;
+  const fertiliser = supplyMap['fertiliser'] || 0;
+  const seed = supplyMap['seed'] || 0;
+  const medicineVaccine = (supplyMap['medicine'] || 0) + (supplyMap['vaccine'] || 0);
+  const otherSupplies = (supplyMap['fuel'] || 0) + (supplyMap['other'] || 0);
+
+  const totalExpenditure = machineryPurchase + machineryRunning + payroll + fertiliser + seed + medicineVaccine + otherSupplies;
+  const netMargin = totalRevenue - totalExpenditure;
+
+  return c.json({
+    data: {
+      revenue: { cattleSales: totalRevenue, total: totalRevenue },
+      expenditure: {
+        machineryPurchase,
+        machineryRunning,
+        payroll,
+        fertiliser,
+        seed,
+        medicineVaccine,
+        otherSupplies,
+        total: totalExpenditure,
+      },
+      netMargin,
+      categories: [
+        { name: 'Machinery Purchase', amount: machineryPurchase },
+        { name: 'Machinery Running', amount: machineryRunning },
+        { name: 'Payroll', amount: payroll },
+        { name: 'Fertiliser', amount: fertiliser },
+        { name: 'Seed', amount: seed },
+        { name: 'Medicine & Vaccine', amount: medicineVaccine },
+        { name: 'Other Supplies', amount: otherSupplies },
+      ],
+    },
+  });
 });
 
 export default analytics;

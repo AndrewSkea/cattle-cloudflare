@@ -4,7 +4,7 @@
  */
 
 import { Hono } from 'hono';
-import { eq, isNull, and, desc } from 'drizzle-orm';
+import { eq, isNull, and, desc, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
@@ -339,6 +339,60 @@ fieldsRoutes.get('/:id/history', async (c) => {
     console.error('Error fetching field history:', error);
     return c.json({ error: 'Failed to fetch field history' }, 500);
   }
+});
+
+/**
+ * GET /api/fields/:id/timeline
+ * Unified timeline of supply applications and machinery work for a field
+ */
+fieldsRoutes.get('/:id/timeline', async (c) => {
+  const db = c.get('db');
+  const user = c.get('user');
+  const farmId = user.activeFarmId!;
+  const id = parseInt(c.req.param('id'));
+
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  const [field] = await db
+    .select({ id: schema.fields.id })
+    .from(schema.fields)
+    .where(and(eq(schema.fields.id, id), eq(schema.fields.farmId, farmId)));
+
+  if (!field) return c.json({ error: 'Field not found' }, 404);
+
+  const [supplies, machineryEvts] = await Promise.all([
+    db
+      .select()
+      .from(schema.supplyPurchases)
+      .where(and(
+        eq(schema.supplyPurchases.fieldId, id),
+        eq(schema.supplyPurchases.farmId, farmId),
+      )),
+    db
+      .select({
+        id: schema.machineryEvents.id,
+        date: schema.machineryEvents.date,
+        type: schema.machineryEvents.type,
+        cost: schema.machineryEvents.cost,
+        description: schema.machineryEvents.description,
+        notes: schema.machineryEvents.notes,
+        machineryName: schema.machinery.name,
+        machineryType: schema.machinery.type,
+      })
+      .from(schema.machineryEvents)
+      .leftJoin(schema.machinery, eq(schema.machineryEvents.machineryId, schema.machinery.id))
+      .where(and(
+        eq(schema.machineryEvents.fieldId, id),
+        eq(schema.machineryEvents.farmId, farmId),
+      )),
+  ]);
+
+  const events = [
+    ...supplies.map(s => ({ ...s, eventSource: 'supply' as const })),
+    ...machineryEvts.map(m => ({ ...m, eventSource: 'machinery' as const })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
+  return c.json({ data: events });
 });
 
 export default fieldsRoutes;

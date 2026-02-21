@@ -24,6 +24,9 @@ import healthRoutes from './routes/health';
 import analyticsRoutes from './routes/analytics';
 import breedingRoutes from './routes/breeding';
 import fieldsRoutes from './routes/fields';
+import machineryRoutes from './routes/machinery';
+import workersRoutes from './routes/workers';
+import suppliesRoutes from './routes/supplies';
 
 const app = new Hono<{ Bindings: Env; Variables: { db: ReturnType<typeof getDrizzleClient>; user: AuthUser } }>();
 
@@ -94,6 +97,9 @@ app.route('/api/health', healthRoutes);
 app.route('/api/analytics', analyticsRoutes);
 app.route('/api/breeding', breedingRoutes);
 app.route('/api/fields', fieldsRoutes);
+app.route('/api/machinery', machineryRoutes);
+app.route('/api/workers', workersRoutes);
+app.route('/api/supplies', suppliesRoutes);
 
 // 404 handler
 app.notFound((c) => {
