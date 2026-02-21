@@ -68,7 +68,9 @@ export default function BreedingPage() {
       ])
 
       setServices((servicesRes as any).data || servicesRes || [])
-      setPredictions((predictionsRes as any).data || predictionsRes || [])
+      // API returns { data: { all: [...], dueSoon, overdue, upcoming, counts } }
+      const predData = (predictionsRes as any).data
+      setPredictions(Array.isArray(predData) ? predData : predData?.all || [])
       setMetrics((metricsRes as any).data || metricsRes)
     } catch (err: any) {
       console.error('Failed to load breeding data:', err)

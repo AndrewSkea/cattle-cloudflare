@@ -18,6 +18,11 @@ function getAppUrl(c: any): string {
   return 'https://cattle-management.pages.dev';
 }
 
+function isLocalhostRequest(c: any): boolean {
+  const origin = c.req.header('Origin') || c.req.header('Host') || '';
+  return origin.includes('localhost') || origin.includes('127.0.0.1');
+}
+
 /**
  * GET /api/auth/login
  * Validates Turnstile token, returns Google OAuth redirect URL.
@@ -153,7 +158,7 @@ auth.get('/callback/google', async (c) => {
       role: activeMembership?.role,
     });
 
-    const cookie = buildAuthCookie(token);
+    const cookie = buildAuthCookie(token, isLocalhostRequest(c));
 
     // Redirect based on whether user has a farm
     const redirectTo = activeMembership ? `${appUrl}/dashboard` : `${appUrl}/onboarding`;
@@ -180,7 +185,7 @@ auth.post('/logout', (c) => {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Set-Cookie': clearAuthCookie(),
+      'Set-Cookie': clearAuthCookie(isLocalhostRequest(c)),
     },
   });
 });
@@ -242,6 +247,77 @@ auth.get('/me', authMiddleware, async (c) => {
     activeFarmId: authUser.activeFarmId,
     activeRole: authUser.role,
   });
+});
+
+/**
+ * POST /api/auth/dev-login
+ * Development-only: creates/finds a test user+farm and returns a JWT token as JSON.
+ * Used by Playwright tests to bypass Google OAuth and Turnstile.
+ * Returns 404 in production.
+ */
+auth.post('/dev-login', async (c) => {
+  if (c.env.ENVIRONMENT === 'production') {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const db = c.get('db');
+  const body = await c.req.json<{ email?: string; name?: string }>().catch(() => ({}));
+  const email = body.email || 'test@example.com';
+  const name = body.name || 'Test User';
+
+  // Find or create user (using email as unique key for dev)
+  let user = await db.select()
+    .from(schema.users)
+    .where(eq(schema.users.email, email))
+    .get();
+
+  if (!user) {
+    const result = await db.insert(schema.users).values({
+      googleId: `dev-${email}`,
+      email,
+      name,
+      avatarUrl: null,
+    }).returning();
+    user = result[0];
+  }
+
+  // Find or create farm membership
+  const membership = await db.select()
+    .from(schema.farmMembers)
+    .where(eq(schema.farmMembers.userId, user.id))
+    .get();
+
+  let farmId: number;
+  let role: string;
+
+  if (!membership) {
+    // Create a default test farm
+    const farmResult = await db.insert(schema.farms).values({
+      name: 'Test Farm',
+      slug: `test-farm-${user.id}`,
+    }).returning();
+    farmId = farmResult[0].id;
+
+    // Add user as owner
+    await db.insert(schema.farmMembers).values({
+      farmId,
+      userId: user.id,
+      role: 'owner',
+    });
+    role = 'owner';
+  } else {
+    farmId = membership.farmId;
+    role = membership.role;
+  }
+
+  const token = await createAuthToken(c.env, {
+    userId: user.id,
+    email: user.email,
+    farmId,
+    role,
+  });
+
+  return c.json({ token, userId: user.id, farmId, role });
 });
 
 export default auth;

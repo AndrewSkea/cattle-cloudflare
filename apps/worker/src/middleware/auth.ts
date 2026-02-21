@@ -122,8 +122,13 @@ export async function createAuthToken(
 
 /**
  * Build a Set-Cookie header value for the auth token.
+ * Uses SameSite=None;Secure for cross-origin production (pages.dev → workers.dev).
+ * Uses SameSite=Lax (no Secure) for HTTP localhost development.
  */
-export function buildAuthCookie(token: string, maxAge: number = 7 * 24 * 60 * 60): string {
+export function buildAuthCookie(token: string, isLocalhost = false, maxAge: number = 7 * 24 * 60 * 60): string {
+  if (isLocalhost) {
+    return `auth_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  }
   // SameSite=None required for cross-origin cookie sharing between
   // cattle-management.pages.dev (frontend) and cattle-management-api.workers.dev (API).
   // Secure is mandatory when SameSite=None.
@@ -133,6 +138,9 @@ export function buildAuthCookie(token: string, maxAge: number = 7 * 24 * 60 * 60
 /**
  * Build a Set-Cookie header value that clears the auth token.
  */
-export function clearAuthCookie(): string {
+export function clearAuthCookie(isLocalhost = false): string {
+  if (isLocalhost) {
+    return `auth_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  }
   return `auth_token=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0`;
 }
