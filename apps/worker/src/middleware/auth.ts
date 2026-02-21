@@ -124,12 +124,15 @@ export async function createAuthToken(
  * Build a Set-Cookie header value for the auth token.
  */
 export function buildAuthCookie(token: string, maxAge: number = 7 * 24 * 60 * 60): string {
-  return `auth_token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  // SameSite=None required for cross-origin cookie sharing between
+  // cattle-management.pages.dev (frontend) and cattle-management-api.workers.dev (API).
+  // Secure is mandatory when SameSite=None.
+  return `auth_token=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${maxAge}`;
 }
 
 /**
  * Build a Set-Cookie header value that clears the auth token.
  */
 export function clearAuthCookie(): string {
-  return `auth_token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+  return `auth_token=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0`;
 }
