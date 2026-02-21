@@ -4,10 +4,10 @@
 
 import { Hono } from 'hono';
 import { FamilyService } from '../services/family';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const family = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const family = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 /**
  * GET /api/family/lineage/:id
@@ -116,10 +116,11 @@ family.get('/overview/:id', async (c) => {
  */
 family.get('/foundation', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     const familyService = new FamilyService(db);
-    const foundationMothers = await familyService.getFoundationMothers();
+    const foundationMothers = await familyService.getFoundationMothers(user.activeFarmId!);
 
     return c.json({
       data: foundationMothers,

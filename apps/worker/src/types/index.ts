@@ -6,7 +6,17 @@ export interface Env {
   DB: D1Database;
   R2_BUCKET: R2Bucket;
   ENVIRONMENT: string;
-  CF_ACCESS_TEAM_DOMAIN?: string;
+  JWT_SECRET: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  TURNSTILE_SECRET_KEY: string;
+}
+
+export interface AuthUser {
+  userId: number;
+  email: string;
+  activeFarmId: number | null;
+  role: string | null;
 }
 
 export interface UploadStats {

@@ -12,16 +12,17 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "hono": "^4.6.11",
-    "drizzle-orm": "^0.36.4",
-    "zod": "^3.24.1",
     "@hono/zod-validator": "^0.4.1",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.11",
+    "jose": "^6.1.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
     "drizzle-kit": "^0.30.1",
-    "wrangler": "^3.95.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "wrangler": "^3.95.0"
   }
 }

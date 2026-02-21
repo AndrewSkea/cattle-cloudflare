@@ -28,6 +28,40 @@ function getFieldColor(fieldType: string | null, color: string | null): string {
   return '#6b7280'
 }
 
+/**
+ * Calculate the area of a polygon defined by lat/lng coordinates using the
+ * Shoelace formula on a local flat projection. Accurate for farm-scale areas.
+ * Returns area in acres.
+ */
+function calculatePolygonAreaAcres(points: L.LatLng[]): number {
+  if (points.length < 3) return 0
+
+  // Use the centroid as the projection origin
+  const avgLat = points.reduce((s, p) => s + p.lat, 0) / points.length
+  const latRad = (avgLat * Math.PI) / 180
+
+  // Meters per degree at this latitude
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(latRad)
+
+  // Project to local meters and apply Shoelace formula
+  const projected = points.map((p) => ({
+    x: (p.lng - points[0].lng) * metersPerDegLng,
+    y: (p.lat - points[0].lat) * metersPerDegLat,
+  }))
+
+  let area = 0
+  for (let i = 0; i < projected.length; i++) {
+    const j = (i + 1) % projected.length
+    area += projected[i].x * projected[j].y
+    area -= projected[j].x * projected[i].y
+  }
+  area = Math.abs(area) / 2
+
+  // Convert square meters to acres (1 acre = 4046.8564224 m²)
+  return area / 4046.8564224
+}
+
 interface FarmMapProps {
   fields: Array<{
     id: number
@@ -39,10 +73,11 @@ interface FarmMapProps {
     color: string | null
     currentCattle: any[]
     cattleCount: number
+    acreage: number | null
   }>
   selectedFieldId: number | null
   onFieldClick: (id: number) => void
-  onPolygonDrawn: (geojson: string, center: { lat: number; lng: number }) => void
+  onPolygonDrawn: (geojson: string, center: { lat: number; lng: number }, acreage: number) => void
   drawMode: boolean
 }
 
@@ -115,8 +150,9 @@ export default function FarmMap({
           },
         })
 
+        const acreageText = field.acreage ? `<br/>${field.acreage.toFixed(2)} acres` : ''
         layer.bindTooltip(
-          `<strong>${field.name}</strong><br/>${field.fieldType || 'Unknown type'}<br/>${field.cattleCount} cattle`,
+          `<strong>${field.name}</strong><br/>${field.fieldType || 'Unknown type'}${acreageText}<br/>${field.cattleCount} cattle`,
           { sticky: true }
         )
 
@@ -255,7 +291,10 @@ export default function FarmMap({
       lng: lngSum / points.length,
     }
 
-    onPolygonDrawn(JSON.stringify(geojson), center)
+    // Calculate area from polygon
+    const acreage = calculatePolygonAreaAcres(points)
+
+    onPolygonDrawn(JSON.stringify(geojson), center, acreage)
 
     // Clear draw layer
     if (drawLayerRef.current) {

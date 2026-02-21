@@ -7,10 +7,10 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const health = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const health = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -32,6 +32,7 @@ const updateHealthEventSchema = createHealthEventSchema.partial().omit({ animalI
  */
 health.get('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { animalId, eventType, startDate, endDate } = c.req.query();
 
   try {
@@ -39,6 +40,9 @@ health.get('/', async (c) => {
 
     // Build filter conditions
     const conditions = [];
+
+    // Always filter by farm
+    conditions.push(eq(schema.healthEvents.farmId, user.activeFarmId!));
 
     if (animalId) {
       conditions.push(eq(schema.healthEvents.animalId, parseInt(animalId)));
@@ -92,6 +96,7 @@ health.get('/', async (c) => {
  */
 health.get('/animal/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -112,7 +117,12 @@ health.get('/animal/:id', async (c) => {
     const healthHistory = await db
       .select()
       .from(schema.healthEvents)
-      .where(eq(schema.healthEvents.animalId, id))
+      .where(
+        and(
+          eq(schema.healthEvents.animalId, id),
+          eq(schema.healthEvents.farmId, user.activeFarmId!)
+        )
+      )
       .orderBy(desc(schema.healthEvents.eventDate));
 
     // Group events by type
@@ -162,11 +172,13 @@ health.get('/animal/:id', async (c) => {
  */
 health.get('/types', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     const eventTypes = await db
       .selectDistinct({ eventType: schema.healthEvents.eventType })
       .from(schema.healthEvents)
+      .where(eq(schema.healthEvents.farmId, user.activeFarmId!))
       .orderBy(schema.healthEvents.eventType);
 
     const types = eventTypes.map(e => e.eventType).filter(t => t !== null);
@@ -187,20 +199,21 @@ health.get('/types', async (c) => {
  */
 health.get('/summary', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { year } = c.req.query();
 
   try {
     let query = db.select().from(schema.healthEvents);
 
+    const conditions = [eq(schema.healthEvents.farmId, user.activeFarmId!)];
+
     if (year) {
       const yearNum = parseInt(year);
-      query = query.where(
-        and(
-          gte(schema.healthEvents.eventDate, `${yearNum}-01-01`),
-          lte(schema.healthEvents.eventDate, `${yearNum}-12-31`)
-        )
-      );
+      conditions.push(gte(schema.healthEvents.eventDate, `${yearNum}-01-01`));
+      conditions.push(lte(schema.healthEvents.eventDate, `${yearNum}-12-31`));
     }
+
+    query = query.where(and(...conditions));
 
     const allEvents = await query;
 
@@ -255,6 +268,7 @@ health.get('/summary', async (c) => {
  */
 health.get('/animal/:id/weights', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -268,7 +282,8 @@ health.get('/animal/:id/weights', async (c) => {
       .where(
         and(
           eq(schema.healthEvents.animalId, id),
-          eq(schema.healthEvents.eventType, 'Weight')
+          eq(schema.healthEvents.eventType, 'Weight'),
+          eq(schema.healthEvents.farmId, user.activeFarmId!)
         )
       )
       .orderBy(schema.healthEvents.eventDate);
@@ -294,6 +309,7 @@ health.get('/animal/:id/weights', async (c) => {
  */
 health.get('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -302,7 +318,10 @@ health.get('/:id', async (c) => {
 
   try {
     const healthEvent = await db.query.healthEvents.findFirst({
-      where: eq(schema.healthEvents.id, id),
+      where: and(
+        eq(schema.healthEvents.id, id),
+        eq(schema.healthEvents.farmId, user.activeFarmId!)
+      ),
       with: {
         animal: true,
       },
@@ -325,6 +344,7 @@ health.get('/:id', async (c) => {
  */
 health.post('/', zValidator('json', createHealthEventSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -340,7 +360,10 @@ health.post('/', zValidator('json', createHealthEventSchema), async (c) => {
     // Create health event
     const [newHealthEvent] = await db
       .insert(schema.healthEvents)
-      .values(data)
+      .values({
+        ...data,
+        farmId: user.activeFarmId!,
+      })
       .returning();
 
     return c.json({ data: newHealthEvent }, 201);
@@ -356,6 +379,7 @@ health.post('/', zValidator('json', createHealthEventSchema), async (c) => {
  */
 health.put('/:id', zValidator('json', updateHealthEventSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const data = c.req.valid('json');
 
@@ -366,7 +390,10 @@ health.put('/:id', zValidator('json', updateHealthEventSchema), async (c) => {
   try {
     // Verify health event exists
     const existing = await db.query.healthEvents.findFirst({
-      where: eq(schema.healthEvents.id, id),
+      where: and(
+        eq(schema.healthEvents.id, id),
+        eq(schema.healthEvents.farmId, user.activeFarmId!)
+      ),
     });
 
     if (!existing) {
@@ -380,7 +407,12 @@ health.put('/:id', zValidator('json', updateHealthEventSchema), async (c) => {
         ...data,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.healthEvents.id, id))
+      .where(
+        and(
+          eq(schema.healthEvents.id, id),
+          eq(schema.healthEvents.farmId, user.activeFarmId!)
+        )
+      )
       .returning();
 
     return c.json({ data: updated });
@@ -396,6 +428,7 @@ health.put('/:id', zValidator('json', updateHealthEventSchema), async (c) => {
  */
 health.delete('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -405,7 +438,12 @@ health.delete('/:id', async (c) => {
   try {
     const [deleted] = await db
       .delete(schema.healthEvents)
-      .where(eq(schema.healthEvents.id, id))
+      .where(
+        and(
+          eq(schema.healthEvents.id, id),
+          eq(schema.healthEvents.farmId, user.activeFarmId!)
+        )
+      )
       .returning();
 
     if (!deleted) {

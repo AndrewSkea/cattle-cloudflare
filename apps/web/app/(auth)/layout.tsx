@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/auth-context'
 import {
   LayoutDashboard,
   CircleDot,
@@ -18,6 +19,8 @@ import {
   ChevronRight,
   Menu,
   X,
+  User,
+  Settings,
 } from 'lucide-react'
 
 const navLinks = [
@@ -31,6 +34,8 @@ const navLinks = [
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
   { href: '/upload', label: 'Upload', icon: Upload },
+  { href: '/settings/profile', label: 'Profile', icon: User },
+  { href: '/settings/farm', label: 'Farm Settings', icon: Settings },
 ]
 
 export default function AuthLayout({
@@ -41,6 +46,8 @@ export default function AuthLayout({
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, farms, activeFarmId, isLoading, isAuthenticated, switchFarm, logout } = useAuth()
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -56,7 +63,31 @@ export default function AuthLayout({
     setMobileOpen(false)
   }, [pathname])
 
+  // Auth redirects
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login')
+    } else if (!isLoading && isAuthenticated && farms.length === 0) {
+      router.push('/onboarding')
+    }
+  }, [isLoading, isAuthenticated, farms, router])
+
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + '/')
+
+  const activeFarm = farms.find(f => f.id === activeFarmId)
+
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated || farms.length === 0) {
+    return null
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -87,6 +118,21 @@ export default function AuthLayout({
           </Link>
         </div>
 
+        {/* Farm Switcher */}
+        {!collapsed && activeFarm && (
+          <div className="px-3 py-2 border-b border-gray-200">
+            <select
+              value={activeFarmId || ''}
+              onChange={(e) => switchFarm(Number(e.target.value))}
+              className="w-full px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg"
+            >
+              {farms.map(f => (
+                <option key={f.id} value={f.id}>{f.name} ({f.role})</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           <ul className="space-y-1">
@@ -114,6 +160,23 @@ export default function AuthLayout({
             })}
           </ul>
         </nav>
+
+        {/* User section */}
+        <div className="border-t border-gray-200 p-3">
+          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+            {user?.avatarUrl && (
+              <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
+            )}
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+                <button onClick={logout} className="text-xs text-gray-500 hover:text-red-600">
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Collapse toggle (desktop only) */}
         <div className="hidden lg:block border-t border-gray-200 p-3">
@@ -154,6 +217,9 @@ export default function AuthLayout({
             <Menu className="w-5 h-5" />
           </button>
           <span className="ml-3 text-lg font-bold text-gray-900">🐄 HoovesWho</span>
+          {activeFarm && (
+            <span className="ml-auto text-sm text-gray-500 truncate">{activeFarm.name}</span>
+          )}
         </header>
 
         {/* Page content */}

@@ -9,6 +9,7 @@
     "deploy": "wrangler pages deploy out"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.4.2",
     "@tanstack/react-query": "^5.62.7",
     "@types/leaflet": "^1.9.21",
     "class-variance-authority": "^0.7.1",

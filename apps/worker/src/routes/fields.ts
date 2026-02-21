@@ -6,10 +6,10 @@
 import { Hono } from 'hono';
 import { eq, isNull, and, desc } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const fieldsRoutes = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const fieldsRoutes = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== ROUTES ====================
 
@@ -19,9 +19,11 @@ const fieldsRoutes = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Databas
  */
 fieldsRoutes.get('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     const allFields = await db.query.fields.findMany({
+      where: eq(schema.fields.farmId, user.activeFarmId!),
       with: {
         assignments: {
           where: isNull(schema.fieldAssignments.removedDate),
@@ -49,6 +51,7 @@ fieldsRoutes.get('/', async (c) => {
  */
 fieldsRoutes.get('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -57,7 +60,7 @@ fieldsRoutes.get('/:id', async (c) => {
 
   try {
     const field = await db.query.fields.findFirst({
-      where: eq(schema.fields.id, id),
+      where: and(eq(schema.fields.id, id), eq(schema.fields.farmId, user.activeFarmId!)),
       with: {
         assignments: {
           where: isNull(schema.fieldAssignments.removedDate),
@@ -89,6 +92,7 @@ fieldsRoutes.get('/:id', async (c) => {
  */
 fieldsRoutes.post('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     const body = await c.req.json();
@@ -100,6 +104,7 @@ fieldsRoutes.post('/', async (c) => {
 
     const [newField] = await db.insert(schema.fields).values({
       name,
+      farmId: user.activeFarmId!,
       fieldType: fieldType || 'grazing',
       polygon,
       centerLat,
@@ -123,6 +128,7 @@ fieldsRoutes.post('/', async (c) => {
  */
 fieldsRoutes.put('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -146,7 +152,7 @@ fieldsRoutes.put('/:id', async (c) => {
 
     const [updated] = await db.update(schema.fields)
       .set(updates)
-      .where(eq(schema.fields.id, id))
+      .where(and(eq(schema.fields.id, id), eq(schema.fields.farmId, user.activeFarmId!)))
       .returning();
 
     if (!updated) {
@@ -166,6 +172,7 @@ fieldsRoutes.put('/:id', async (c) => {
  */
 fieldsRoutes.delete('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -174,7 +181,7 @@ fieldsRoutes.delete('/:id', async (c) => {
 
   try {
     const [deleted] = await db.delete(schema.fields)
-      .where(eq(schema.fields.id, id))
+      .where(and(eq(schema.fields.id, id), eq(schema.fields.farmId, user.activeFarmId!)))
       .returning();
 
     if (!deleted) {
@@ -195,6 +202,7 @@ fieldsRoutes.delete('/:id', async (c) => {
  */
 fieldsRoutes.post('/:id/assign', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const fieldId = parseInt(c.req.param('id'));
 
   if (isNaN(fieldId)) {
@@ -213,9 +221,9 @@ fieldsRoutes.post('/:id/assign', async (c) => {
       return c.json({ error: 'assignedDate is required' }, 400);
     }
 
-    // Verify the field exists
+    // Verify the field exists and belongs to the user's farm
     const field = await db.query.fields.findFirst({
-      where: eq(schema.fields.id, fieldId),
+      where: and(eq(schema.fields.id, fieldId), eq(schema.fields.farmId, user.activeFarmId!)),
     });
 
     if (!field) {
@@ -240,6 +248,7 @@ fieldsRoutes.post('/:id/assign', async (c) => {
         cattleId,
         fieldId,
         assignedDate,
+        farmId: user.activeFarmId!,
       }).returning();
 
       assignments.push(assignment);
@@ -259,6 +268,7 @@ fieldsRoutes.post('/:id/assign', async (c) => {
  */
 fieldsRoutes.post('/:id/remove', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const fieldId = parseInt(c.req.param('id'));
 
   if (isNaN(fieldId)) {
@@ -283,6 +293,7 @@ fieldsRoutes.post('/:id/remove', async (c) => {
           and(
             eq(schema.fieldAssignments.cattleId, cattleId),
             eq(schema.fieldAssignments.fieldId, fieldId),
+            eq(schema.fieldAssignments.farmId, user.activeFarmId!),
             isNull(schema.fieldAssignments.removedDate),
           )
         )
@@ -306,6 +317,7 @@ fieldsRoutes.post('/:id/remove', async (c) => {
  */
 fieldsRoutes.get('/:id/history', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -314,7 +326,10 @@ fieldsRoutes.get('/:id/history', async (c) => {
 
   try {
     const history = await db.query.fieldAssignments.findMany({
-      where: eq(schema.fieldAssignments.fieldId, id),
+      where: and(
+        eq(schema.fieldAssignments.fieldId, id),
+        eq(schema.fieldAssignments.farmId, user.activeFarmId!),
+      ),
       with: { cattle: true },
       orderBy: [desc(schema.fieldAssignments.assignedDate)],
     });

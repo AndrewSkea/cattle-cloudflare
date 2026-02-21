@@ -5,7 +5,7 @@
  * Handles recursive queries with circular reference protection
  */
 
-import { eq, isNull, isNotNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DrizzleD1Database } from '../db/client';
 import type { FamilyTreeNode } from '../types';
@@ -206,10 +206,12 @@ export class FamilyService {
    * Get foundation mothers (no dam but have offspring)
    * Matches Python: get_foundation_mothers()
    */
-  async getFoundationMothers() {
-    // Get all cattle with no dam
+  async getFoundationMothers(farmId?: number) {
+    // Get all cattle with no dam (optionally scoped to farm)
     const allCattle = await this.db.query.cattle.findMany({
-      where: isNull(schema.cattle.damTag),
+      where: farmId
+        ? and(isNull(schema.cattle.damTag), eq(schema.cattle.farmId, farmId))
+        : isNull(schema.cattle.damTag),
     });
 
     const foundationMothers = [];

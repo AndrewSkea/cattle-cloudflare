@@ -95,9 +95,10 @@ export default function FieldsPage() {
   }, [])
 
   const handlePolygonDrawn = useCallback(
-    (geojson: string, center: { lat: number; lng: number }) => {
+    (geojson: string, center: { lat: number; lng: number }, acreage: number) => {
       setPendingPolygon(geojson)
       setPendingCenter(center)
+      setNewFieldAcreage(acreage > 0 ? acreage.toFixed(2) : '')
       setDrawMode(false)
       setShowCreateForm(true)
     },
@@ -290,10 +291,15 @@ export default function FieldsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Acreage
+                  {pendingPolygon && newFieldAcreage && (
+                    <span className="ml-2 text-xs font-normal text-green-600">
+                      (calculated from polygon)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   value={newFieldAcreage}
                   onChange={(e) => setNewFieldAcreage(e.target.value)}
                   placeholder="e.g. 12.5"

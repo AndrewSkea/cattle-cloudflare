@@ -4,10 +4,10 @@
 
 import { Hono } from 'hono';
 import { BulkUploadService } from '../services/bulk-upload';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const upload = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const upload = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 /**
  * POST /api/upload/excel
@@ -57,7 +57,8 @@ upload.post('/excel', async (c) => {
     const arrayBuffer = await file.arrayBuffer();
 
     // Process with BulkUploadService
-    const uploadService = new BulkUploadService(db);
+    const user = c.get('user');
+    const uploadService = new BulkUploadService(db, user.activeFarmId!);
     const stats = await uploadService.processFile(arrayBuffer, file.name);
 
     return c.json({

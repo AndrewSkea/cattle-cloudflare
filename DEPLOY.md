@@ -315,3 +315,28 @@ After successful deployment:
 7. Train users on new interface
 
 🎉 Congratulations! Your cattle management system is now running on Cloudflare's global network!
+
+
+
+### Secrets 
+  Summary: What You Need
+
+Service: Google Client ID
+Where to Get: https://console.cloud.google.com/apis/credentials
+Save As: NEXT_PUBLIC_GOOGLE_CLIENT_ID (frontend)
+────────────────────────────────────────
+Service: Google Client Secret
+Where to Get: https://console.cloud.google.com/apis/credentials
+Save As: GOOGLE_CLIENT_SECRET (wrangler secret)
+────────────────────────────────────────
+Service: Turnstile Site Key
+Where to Get: https://dash.cloudflare.com/turnstile
+Save As: NEXT_PUBLIC_TURNSTILE_SITE_KEY (frontend)
+────────────────────────────────────────
+Service: Turnstile Secret
+Where to Get: https://dash.cloudflare.com/turnstile
+Save As: TURNSTILE_SECRET_KEY (wrangler secret)
+────────────────────────────────────────
+Service: JWT Secret
+Where to Get: Generate with openssl rand -hex 32
+Save As: JWT_SECRET (wrangler secret)

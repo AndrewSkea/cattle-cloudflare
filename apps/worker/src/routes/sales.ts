@@ -7,10 +7,10 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const sales = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const sales = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -69,6 +69,7 @@ function calculateDerivedMetrics(data: {
  */
 sales.get('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { eventType, startDate, endDate, minPrice, maxPrice } = c.req.query();
 
   try {
@@ -76,6 +77,9 @@ sales.get('/', async (c) => {
 
     // Build filter conditions
     const conditions = [];
+
+    // Always filter by farmId
+    conditions.push(eq(schema.saleEvents.farmId, user.activeFarmId!));
 
     if (eventType) {
       conditions.push(eq(schema.saleEvents.eventType, eventType));
@@ -141,11 +145,13 @@ sales.get('/', async (c) => {
  */
 sales.get('/metrics', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { period } = c.req.query();
 
   try {
-    // Get all sales
-    const allSales = await db.select().from(schema.saleEvents);
+    // Get all sales for this farm
+    const allSales = await db.select().from(schema.saleEvents)
+      .where(eq(schema.saleEvents.farmId, user.activeFarmId!));
     const sold = allSales.filter(s => s.eventType === 'Sold');
 
     // Calculate totals
@@ -211,20 +217,22 @@ sales.get('/metrics', async (c) => {
  */
 sales.get('/summary', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { year } = c.req.query();
 
   try {
     let query = db.select().from(schema.saleEvents);
 
+    // Build conditions - always include farmId
+    const conditions = [eq(schema.saleEvents.farmId, user.activeFarmId!)];
+
     if (year) {
       const yearNum = parseInt(year);
-      query = query.where(
-        and(
-          gte(schema.saleEvents.eventDate, `${yearNum}-01-01`),
-          lte(schema.saleEvents.eventDate, `${yearNum}-12-31`)
-        )
-      );
+      conditions.push(gte(schema.saleEvents.eventDate, `${yearNum}-01-01`));
+      conditions.push(lte(schema.saleEvents.eventDate, `${yearNum}-12-31`));
     }
+
+    query = query.where(and(...conditions));
 
     const allSales = await query;
 
@@ -308,6 +316,7 @@ sales.get('/summary', async (c) => {
  */
 sales.get('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -316,7 +325,10 @@ sales.get('/:id', async (c) => {
 
   try {
     const sale = await db.query.saleEvents.findFirst({
-      where: eq(schema.saleEvents.id, id),
+      where: and(
+        eq(schema.saleEvents.id, id),
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
+      ),
       with: {
         animal: true,
       },
@@ -339,6 +351,7 @@ sales.get('/:id', async (c) => {
  */
 sales.post('/', zValidator('json', createSaleSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -378,6 +391,7 @@ sales.post('/', zValidator('json', createSaleSchema), async (c) => {
       .insert(schema.saleEvents)
       .values({
         ...data,
+        farmId: user.activeFarmId!,
         ageMonths,
         kgPerMonth: data.kgPerMonth || derivedMetrics.kgPerMonth,
         pricePerMonth: data.pricePerMonth || derivedMetrics.pricePerMonth,
@@ -407,6 +421,7 @@ sales.post('/', zValidator('json', createSaleSchema), async (c) => {
  */
 sales.put('/:id', zValidator('json', updateSaleSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const data = c.req.valid('json');
 
@@ -417,7 +432,10 @@ sales.put('/:id', zValidator('json', updateSaleSchema), async (c) => {
   try {
     // Verify sale exists
     const existing = await db.query.saleEvents.findFirst({
-      where: eq(schema.saleEvents.id, id),
+      where: and(
+        eq(schema.saleEvents.id, id),
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
+      ),
       with: {
         animal: true,
       },
@@ -455,7 +473,10 @@ sales.put('/:id', zValidator('json', updateSaleSchema), async (c) => {
         ...updateData,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.saleEvents.id, id))
+      .where(and(
+        eq(schema.saleEvents.id, id),
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
+      ))
       .returning();
 
     // Update animal status if event type changed
@@ -482,6 +503,7 @@ sales.put('/:id', zValidator('json', updateSaleSchema), async (c) => {
  */
 sales.delete('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -490,7 +512,10 @@ sales.delete('/:id', async (c) => {
 
   try {
     const existing = await db.query.saleEvents.findFirst({
-      where: eq(schema.saleEvents.id, id),
+      where: and(
+        eq(schema.saleEvents.id, id),
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
+      ),
     });
 
     if (!existing) {
@@ -500,7 +525,10 @@ sales.delete('/:id', async (c) => {
     // Delete sale event
     const [deleted] = await db
       .delete(schema.saleEvents)
-      .where(eq(schema.saleEvents.id, id))
+      .where(and(
+        eq(schema.saleEvents.id, id),
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
+      ))
       .returning();
 
     // Restore animal to active status
@@ -536,6 +564,7 @@ const batchSaleSchema = z.object({
 
 sales.post('/batch', zValidator('json', batchSaleSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { sales: saleItems } = c.req.valid('json');
 
   try {
@@ -576,6 +605,7 @@ sales.post('/batch', zValidator('json', batchSaleSchema), async (c) => {
       // Create sale event
       await db.insert(schema.saleEvents).values({
         animalId: item.animalId,
+        farmId: user.activeFarmId!,
         eventDate: item.eventDate,
         eventType: 'Sold',
         ageMonths,

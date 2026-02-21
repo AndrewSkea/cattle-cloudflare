@@ -13,11 +13,13 @@ import type { UploadStats } from '../types';
 
 export class BulkUploadService {
   private db: DrizzleD1Database;
+  private farmId: number;
   private stats: UploadStats;
   private cattleMap: Map<string, { id: number }>;
 
-  constructor(db: DrizzleD1Database) {
+  constructor(db: DrizzleD1Database, farmId: number) {
     this.db = db;
+    this.farmId = farmId;
     this.stats = {
       cattleAdded: 0,
       cattleSkipped: 0,
@@ -118,6 +120,7 @@ export class BulkUploadService {
           onFarm: this.parseOnFarm(row),
           currentStatus: this.determineStatus(row),
           notes: this.buildNotes(row),
+          farmId: this.farmId,
         }).returning();
 
         this.cattleMap.set(mgmtTag, { id: newCattle.id });
@@ -225,6 +228,7 @@ export class BulkUploadService {
             sire: row['Sire 2026 calf'] || null,
             expectedCalvingDate: this.parseDate(row['calf due date from service date']),
             expectedCalvingPeriod: row['calf due date Julia 2025.11.08'] || null,
+            farmId: this.farmId,
           });
 
           this.stats.servicesAdded++;
@@ -267,6 +271,7 @@ export class BulkUploadService {
               salePrice: this.parseFloat(row['Sale price £']),
               kgPerMonth: this.parseFloat(row['kg/ month']),
               pricePerMonth: this.parseFloat(row['£/month']),
+              farmId: this.farmId,
             });
 
             this.stats.salesAdded++;
@@ -301,6 +306,7 @@ export class BulkUploadService {
             eventDate: '2025-05-20',
             eventType: 'feet trimmed',
             description: String(row[feetCol]),
+            farmId: this.farmId,
           });
 
           this.stats.healthAdded++;
@@ -338,6 +344,7 @@ export class BulkUploadService {
         calfSex: config.sexCol ? row[config.sexCol] : null,
         sire: config.sireCol ? row[config.sireCol] : null,
         daysSinceLastCalving: config.deltaCol ? this.parseInt(row[config.deltaCol]) : null,
+        farmId: this.farmId,
       });
 
       this.stats.calvingsAdded++;

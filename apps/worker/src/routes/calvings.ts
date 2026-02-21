@@ -7,10 +7,10 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const calvings = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const calvings = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -81,6 +81,7 @@ function getMonthName(dateStr: string): string {
  */
 calvings.get('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { motherId, year, month, startDate, endDate } = c.req.query();
 
   try {
@@ -88,6 +89,7 @@ calvings.get('/', async (c) => {
 
     // Build filter conditions
     const conditions = [];
+    conditions.push(eq(schema.calvingEvents.farmId, user.activeFarmId!));
 
     if (motherId) {
       conditions.push(eq(schema.calvingEvents.motherId, parseInt(motherId)));
@@ -153,6 +155,7 @@ calvings.get('/', async (c) => {
  */
 calvings.get('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -161,7 +164,7 @@ calvings.get('/:id', async (c) => {
 
   try {
     const calving = await db.query.calvingEvents.findFirst({
-      where: eq(schema.calvingEvents.id, id),
+      where: and(eq(schema.calvingEvents.id, id), eq(schema.calvingEvents.farmId, user.activeFarmId!)),
       with: {
         mother: true,
         calf: true,
@@ -186,6 +189,7 @@ calvings.get('/:id', async (c) => {
  */
 calvings.post('/', zValidator('json', createCalvingSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -229,6 +233,7 @@ calvings.post('/', zValidator('json', createCalvingSchema), async (c) => {
         ...data,
         calvingMonth,
         daysSinceLastCalving,
+        farmId: user.activeFarmId!,
       })
       .returning();
 
@@ -276,6 +281,7 @@ const createCalvingWithCalfSchema = z.object({
 
 calvings.post('/with-calf', zValidator('json', createCalvingWithCalfSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -303,6 +309,7 @@ calvings.post('/with-calf', zValidator('json', createCalvingWithCalfSchema), asy
         damTag: data.motherId,
         onFarm: true,
         currentStatus: 'Active',
+        farmId: user.activeFarmId!,
       })
       .returning();
 
@@ -328,6 +335,7 @@ calvings.post('/with-calf', zValidator('json', createCalvingWithCalfSchema), asy
           : null,
         daysSinceLastCalving,
         notes: data.notes || null,
+        farmId: user.activeFarmId!,
       })
       .returning();
 
@@ -347,6 +355,7 @@ calvings.post('/with-calf', zValidator('json', createCalvingWithCalfSchema), asy
  */
 calvings.put('/:id', zValidator('json', updateCalvingSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const data = c.req.valid('json');
 
@@ -355,9 +364,9 @@ calvings.put('/:id', zValidator('json', updateCalvingSchema), async (c) => {
   }
 
   try {
-    // Verify calving exists
+    // Verify calving exists and belongs to user's farm
     const existing = await db.query.calvingEvents.findFirst({
-      where: eq(schema.calvingEvents.id, id),
+      where: and(eq(schema.calvingEvents.id, id), eq(schema.calvingEvents.farmId, user.activeFarmId!)),
     });
 
     if (!existing) {
@@ -405,7 +414,7 @@ calvings.put('/:id', zValidator('json', updateCalvingSchema), async (c) => {
         ...updateData,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.calvingEvents.id, id))
+      .where(and(eq(schema.calvingEvents.id, id), eq(schema.calvingEvents.farmId, user.activeFarmId!)))
       .returning();
 
     return c.json({ data: updated });
@@ -421,6 +430,7 @@ calvings.put('/:id', zValidator('json', updateCalvingSchema), async (c) => {
  */
 calvings.delete('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -441,7 +451,7 @@ calvings.delete('/:id', async (c) => {
     // Delete the calving event
     const [deleted] = await db
       .delete(schema.calvingEvents)
-      .where(eq(schema.calvingEvents.id, id))
+      .where(and(eq(schema.calvingEvents.id, id), eq(schema.calvingEvents.farmId, user.activeFarmId!)))
       .returning();
 
     if (!deleted) {

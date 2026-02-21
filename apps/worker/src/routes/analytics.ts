@@ -5,10 +5,10 @@
 import { Hono } from 'hono';
 import { eq, and, sql, gte, lte, isNotNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const analytics = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const analytics = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -37,13 +37,19 @@ function getCurrentYear(): number {
  */
 analytics.get('/dashboard', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     // Total cattle on farm
     const totalCattleResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(schema.cattle)
-      .where(eq(schema.cattle.onFarm, true));
+      .where(
+        and(
+          eq(schema.cattle.onFarm, true),
+          eq(schema.cattle.farmId, user.activeFarmId!)
+        )
+      );
     const totalCattle = totalCattleResult[0]?.count || 0;
 
     // Breeding females (females on farm)
@@ -53,7 +59,8 @@ analytics.get('/dashboard', async (c) => {
       .where(
         and(
           eq(schema.cattle.onFarm, true),
-          eq(schema.cattle.sex, 'fem')
+          eq(schema.cattle.sex, 'fem'),
+          eq(schema.cattle.farmId, user.activeFarmId!)
         )
       );
     const breedingFemales = breedingFemalesResult[0]?.count || 0;
@@ -70,7 +77,8 @@ analytics.get('/dashboard', async (c) => {
           isNotNull(schema.serviceEvents.expectedCalvingDate),
           lte(schema.serviceEvents.expectedCalvingDate, sixtyDaysFromNow.toISOString().split('T')[0]),
           gte(schema.serviceEvents.expectedCalvingDate, new Date().toISOString().split('T')[0]),
-          sql`${schema.serviceEvents.successful} IS NULL` // Not yet calved
+          sql`${schema.serviceEvents.successful} IS NULL`, // Not yet calved
+          eq(schema.serviceEvents.farmId, user.activeFarmId!)
         )
       );
     const upcomingCalvings = upcomingCalvingsResult[0]?.count || 0;
@@ -88,7 +96,8 @@ analytics.get('/dashboard', async (c) => {
       .where(
         and(
           gte(schema.saleEvents.eventDate, ytdStartDate),
-          eq(schema.saleEvents.eventType, 'Sold')
+          eq(schema.saleEvents.eventType, 'Sold'),
+          eq(schema.saleEvents.farmId, user.activeFarmId!)
         )
       );
 
@@ -100,7 +109,10 @@ analytics.get('/dashboard', async (c) => {
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
     const recentCalvingsData = await db.query.calvingEvents.findMany({
-      where: gte(schema.calvingEvents.calvingDate, ninetyDaysAgo.toISOString().split('T')[0]),
+      where: and(
+        gte(schema.calvingEvents.calvingDate, ninetyDaysAgo.toISOString().split('T')[0]),
+        eq(schema.calvingEvents.farmId, user.activeFarmId!)
+      ),
       with: {
         mother: true,
         calf: true,
@@ -123,7 +135,8 @@ analytics.get('/dashboard', async (c) => {
       where: and(
         isNotNull(schema.serviceEvents.expectedCalvingDate),
         gte(schema.serviceEvents.expectedCalvingDate, new Date().toISOString().split('T')[0]),
-        sql`${schema.serviceEvents.successful} IS NULL`
+        sql`${schema.serviceEvents.successful} IS NULL`,
+        eq(schema.serviceEvents.farmId, user.activeFarmId!)
       ),
       with: {
         cow: true,
@@ -149,7 +162,12 @@ analytics.get('/dashboard', async (c) => {
     const allCattleForComposition = await db
       .select({ breed: schema.cattle.breed })
       .from(schema.cattle)
-      .where(eq(schema.cattle.onFarm, true));
+      .where(
+        and(
+          eq(schema.cattle.onFarm, true),
+          eq(schema.cattle.farmId, user.activeFarmId!)
+        )
+      );
 
     const breedCounts: Record<string, number> = {};
     allCattleForComposition.forEach(c => {
@@ -183,10 +201,12 @@ analytics.get('/dashboard', async (c) => {
  */
 analytics.get('/herd-statistics', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     // Get all cattle for processing
-    const allCattle = await db.select().from(schema.cattle);
+    const allCattle = await db.select().from(schema.cattle)
+      .where(eq(schema.cattle.farmId, user.activeFarmId!));
 
     // Breakdown by breed
     const breedStats = allCattle.reduce((acc, animal) => {
@@ -260,6 +280,7 @@ analytics.get('/herd-statistics', async (c) => {
  */
 analytics.get('/breeding-metrics', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     // Get all breeding females
@@ -269,15 +290,18 @@ analytics.get('/breeding-metrics', async (c) => {
       .where(
         and(
           eq(schema.cattle.onFarm, true),
-          eq(schema.cattle.sex, 'fem')
+          eq(schema.cattle.sex, 'fem'),
+          eq(schema.cattle.farmId, user.activeFarmId!)
         )
       );
 
     // Get all calving events
-    const allCalvings = await db.select().from(schema.calvingEvents);
+    const allCalvings = await db.select().from(schema.calvingEvents)
+      .where(eq(schema.calvingEvents.farmId, user.activeFarmId!));
 
     // Get all service events
-    const allServices = await db.select().from(schema.serviceEvents);
+    const allServices = await db.select().from(schema.serviceEvents)
+      .where(eq(schema.serviceEvents.farmId, user.activeFarmId!));
 
     // Calculate calving rate (calvings per year)
     const calvingsThisYear = allCalvings.filter(c =>
@@ -343,10 +367,11 @@ analytics.get('/breeding-metrics', async (c) => {
  */
 analytics.get('/financial-summary', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { year } = c.req.query();
 
   try {
-    // Build query with optional year filter
+    // Build query with optional year filter and farmId scoping
     let query = db.select().from(schema.saleEvents);
 
     if (year) {
@@ -354,8 +379,13 @@ analytics.get('/financial-summary', async (c) => {
       query = query.where(
         and(
           gte(schema.saleEvents.eventDate, `${yearNum}-01-01`),
-          lte(schema.saleEvents.eventDate, `${yearNum}-12-31`)
+          lte(schema.saleEvents.eventDate, `${yearNum}-12-31`),
+          eq(schema.saleEvents.farmId, user.activeFarmId!)
         )
+      );
+    } else {
+      query = query.where(
+        eq(schema.saleEvents.farmId, user.activeFarmId!)
       );
     }
 
@@ -433,13 +463,17 @@ analytics.get('/financial-summary', async (c) => {
  */
 analytics.get('/trends', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { startYear, endYear } = c.req.query();
 
   try {
     // Get all cattle and events
-    const allCattle = await db.select().from(schema.cattle);
-    const allCalvings = await db.select().from(schema.calvingEvents);
-    const allSales = await db.select().from(schema.saleEvents);
+    const allCattle = await db.select().from(schema.cattle)
+      .where(eq(schema.cattle.farmId, user.activeFarmId!));
+    const allCalvings = await db.select().from(schema.calvingEvents)
+      .where(eq(schema.calvingEvents.farmId, user.activeFarmId!));
+    const allSales = await db.select().from(schema.saleEvents)
+      .where(eq(schema.saleEvents.farmId, user.activeFarmId!));
 
     // Determine year range
     const currentYear = getCurrentYear();

@@ -7,10 +7,10 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, like, or, and, desc, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const cattle = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const cattle = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -53,6 +53,7 @@ const updateCattleSchema = createCattleSchema.partial();
  */
 cattle.get('/', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { search, breed, sex, onFarm, sortBy, order } = c.req.query();
 
   try {
@@ -60,6 +61,9 @@ cattle.get('/', async (c) => {
 
     // Apply filters
     const conditions = [];
+
+    // Always scope to active farm
+    conditions.push(eq(schema.cattle.farmId, user.activeFarmId!));
 
     if (search) {
       conditions.push(
@@ -140,6 +144,7 @@ cattle.get('/', async (c) => {
  */
 cattle.get('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -148,7 +153,7 @@ cattle.get('/:id', async (c) => {
 
   try {
     const cattleRecord = await db.query.cattle.findFirst({
-      where: eq(schema.cattle.id, id),
+      where: and(eq(schema.cattle.id, id), eq(schema.cattle.farmId, user.activeFarmId!)),
       with: {
         dam: true,
         offspring: true,
@@ -186,6 +191,7 @@ cattle.get('/:id', async (c) => {
  */
 cattle.post('/', zValidator('json', createCattleSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -201,6 +207,7 @@ cattle.post('/', zValidator('json', createCattleSchema), async (c) => {
     // Create cattle record
     const [newCattle] = await db.insert(schema.cattle).values({
       ...data,
+      farmId: user.activeFarmId!,
       onFarm: true,
       currentStatus: 'Active',
     }).returning();
@@ -218,6 +225,7 @@ cattle.post('/', zValidator('json', createCattleSchema), async (c) => {
  */
 cattle.put('/:id', zValidator('json', updateCattleSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const data = c.req.valid('json');
 
@@ -231,7 +239,7 @@ cattle.put('/:id', zValidator('json', updateCattleSchema), async (c) => {
         ...data,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.cattle.id, id))
+      .where(and(eq(schema.cattle.id, id), eq(schema.cattle.farmId, user.activeFarmId!)))
       .returning();
 
     if (!updated) {
@@ -251,6 +259,7 @@ cattle.put('/:id', zValidator('json', updateCattleSchema), async (c) => {
  */
 cattle.delete('/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -264,7 +273,7 @@ cattle.delete('/:id', async (c) => {
         currentStatus: 'Deleted',
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.cattle.id, id))
+      .where(and(eq(schema.cattle.id, id), eq(schema.cattle.farmId, user.activeFarmId!)))
       .returning();
 
     if (!deleted) {
@@ -284,6 +293,7 @@ cattle.delete('/:id', async (c) => {
  */
 cattle.get('/:id/movements', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -292,7 +302,7 @@ cattle.get('/:id/movements', async (c) => {
 
   try {
     const movements = await db.query.fieldAssignments.findMany({
-      where: eq(schema.fieldAssignments.cattleId, id),
+      where: and(eq(schema.fieldAssignments.cattleId, id), eq(schema.fieldAssignments.farmId, user.activeFarmId!)),
       with: { field: true },
       orderBy: [desc(schema.fieldAssignments.assignedDate)],
     });
@@ -316,6 +326,7 @@ const batchUpdateStatusSchema = z.object({
 
 cattle.post('/batch-update-status', zValidator('json', batchUpdateStatusSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { ids, currentStatus, onFarm } = c.req.valid('json');
 
   try {
@@ -331,7 +342,7 @@ cattle.post('/batch-update-status', zValidator('json', batchUpdateStatusSchema),
     for (const id of ids) {
       const [result] = await db.update(schema.cattle)
         .set(updateData)
-        .where(eq(schema.cattle.id, id))
+        .where(and(eq(schema.cattle.id, id), eq(schema.cattle.farmId, user.activeFarmId!)))
         .returning();
       if (result) updated++;
     }

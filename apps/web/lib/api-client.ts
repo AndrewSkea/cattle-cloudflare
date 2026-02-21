@@ -16,11 +16,19 @@ export class ApiClient {
 
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
       },
     });
+
+    if (response.status === 401) {
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+      }
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -93,6 +101,7 @@ export class ApiClient {
     const response = await fetch(`${this.baseUrl}/api/upload/excel`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -341,6 +350,83 @@ export class ApiClient {
       method: 'POST',
       body: JSON.stringify({ sales }),
     });
+  }
+  // Auth endpoints
+  async getLoginUrl(turnstileToken: string) {
+    return this.request(`/api/auth/login?turnstile_token=${encodeURIComponent(turnstileToken)}`);
+  }
+
+  async logout() {
+    return this.request('/api/auth/logout', { method: 'POST' });
+  }
+
+  async getMe() {
+    return this.request('/api/auth/me');
+  }
+
+  // Farm endpoints
+  async createFarm(data: { name: string }) {
+    return this.request('/api/farms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getFarms() {
+    return this.request('/api/farms');
+  }
+
+  async switchFarm(farmId: number) {
+    return this.request(`/api/farms/${farmId}/switch`, { method: 'POST' });
+  }
+
+  async updateFarm(farmId: number, data: { name?: string }) {
+    return this.request(`/api/farms/${farmId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFarm(farmId: number) {
+    return this.request(`/api/farms/${farmId}`, { method: 'DELETE' });
+  }
+
+  async getFarmMembers(farmId: number) {
+    return this.request(`/api/farms/${farmId}/members`);
+  }
+
+  async updateFarmMember(farmId: number, userId: number, data: { role?: string; expiresAt?: string | null }) {
+    return this.request(`/api/farms/${farmId}/members/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeFarmMember(farmId: number, userId: number) {
+    return this.request(`/api/farms/${farmId}/members/${userId}`, { method: 'DELETE' });
+  }
+
+  async createInvite(farmId: number, data: { role: string; maxUses?: number | null; expiresAt?: string | null; accessDuration?: number | null }) {
+    return this.request(`/api/farms/${farmId}/invites`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getInvites(farmId: number) {
+    return this.request(`/api/farms/${farmId}/invites`);
+  }
+
+  async deleteInvite(farmId: number, inviteId: number) {
+    return this.request(`/api/farms/${farmId}/invites/${inviteId}`, { method: 'DELETE' });
+  }
+
+  async getInviteDetails(code: string) {
+    return this.request(`/api/invite/${code}`);
+  }
+
+  async acceptInvite(code: string) {
+    return this.request(`/api/invite/${code}/accept`, { method: 'POST' });
   }
 }
 

@@ -8,9 +8,13 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getDrizzleClient } from './db/client';
-import type { Env } from './types';
+import { authMiddleware } from './middleware/auth';
+import type { Env, AuthUser } from './types';
 
 // Import routes
+import authRoutes from './routes/auth';
+import farmRoutes from './routes/farms';
+import inviteRoutes from './routes/invite';
 import cattleRoutes from './routes/cattle';
 import familyRoutes from './routes/family';
 import uploadRoutes from './routes/upload';
@@ -21,7 +25,7 @@ import analyticsRoutes from './routes/analytics';
 import breedingRoutes from './routes/breeding';
 import fieldsRoutes from './routes/fields';
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: { db: ReturnType<typeof getDrizzleClient>; user: AuthUser } }>();
 
 // ==================== MIDDLEWARE ====================
 
@@ -48,15 +52,16 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// TODO: Cloudflare Access authentication middleware
-// app.use('/api/*', async (c, next) => {
-//   const cfAccessJWT = c.req.header('Cf-Access-Jwt-Assertion');
-//   if (!cfAccessJWT) {
-//     return c.json({ error: 'Unauthorized' }, 401);
-//   }
-//   // Verify JWT with Cloudflare Access
-//   await next();
-// });
+// Auth middleware for protected API routes (excludes /api/auth/* and GET /api/invite/:code)
+app.use('/api/cattle/*', authMiddleware);
+app.use('/api/family/*', authMiddleware);
+app.use('/api/upload/*', authMiddleware);
+app.use('/api/calvings/*', authMiddleware);
+app.use('/api/sales/*', authMiddleware);
+app.use('/api/health/*', authMiddleware);
+app.use('/api/analytics/*', authMiddleware);
+app.use('/api/breeding/*', authMiddleware);
+app.use('/api/fields/*', authMiddleware);
 
 // ==================== ROUTES ====================
 
@@ -70,7 +75,16 @@ app.get('/', (c) => {
   });
 });
 
-// API routes
+// Auth routes (public - handles own auth internally)
+app.route('/api/auth', authRoutes);
+
+// Farm management routes (auth handled internally)
+app.route('/api/farms', farmRoutes);
+
+// Invite routes (GET is public, POST /accept requires auth - handled internally)
+app.route('/api/invite', inviteRoutes);
+
+// Data routes (protected by auth middleware above)
 app.route('/api/cattle', cattleRoutes);
 app.route('/api/family', familyRoutes);
 app.route('/api/upload', uploadRoutes);

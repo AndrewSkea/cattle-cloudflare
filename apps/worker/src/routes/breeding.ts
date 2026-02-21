@@ -8,9 +8,10 @@ import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
 import type { Env } from '../types';
+import type { AuthUser } from '../types';
 import type { DrizzleD1Database } from '../db/client';
 
-const breeding = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database } }>();
+const breeding = new Hono<{ Bindings: Env; Variables: { db: DrizzleD1Database; user: AuthUser } }>();
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -75,6 +76,7 @@ function daysUntilCalving(expectedDate: string): number {
  */
 breeding.get('/calendar', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { startDate, endDate, status } = c.req.query();
 
   try {
@@ -82,6 +84,9 @@ breeding.get('/calendar', async (c) => {
 
     // Build filter conditions
     const conditions = [];
+
+    // Always scope to the user's active farm
+    conditions.push(eq(schema.serviceEvents.farmId, user.activeFarmId!));
 
     if (startDate) {
       conditions.push(gte(schema.serviceEvents.expectedCalvingDate, startDate));
@@ -165,13 +170,14 @@ breeding.get('/calendar', async (c) => {
  */
 breeding.get('/predictions', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
 
   try {
     // Get all pending services (not yet calved)
     const pendingServices = await db
       .select()
       .from(schema.serviceEvents)
-      .where(sql`${schema.serviceEvents.successful} IS NULL`)
+      .where(and(sql`${schema.serviceEvents.successful} IS NULL`, eq(schema.serviceEvents.farmId, user.activeFarmId!)))
       .orderBy(schema.serviceEvents.expectedCalvingDate);
 
     // Fetch cow details and calculate prediction info
@@ -257,19 +263,25 @@ breeding.get('/predictions', async (c) => {
  */
 breeding.get('/performance', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { year } = c.req.query();
 
   try {
     let query = db.select().from(schema.serviceEvents);
 
+    const conditions = [];
+
+    // Always scope to the user's active farm
+    conditions.push(eq(schema.serviceEvents.farmId, user.activeFarmId!));
+
     if (year) {
       const yearNum = parseInt(year);
-      query = query.where(
-        and(
-          gte(schema.serviceEvents.serviceDate, `${yearNum}-01-01`),
-          lte(schema.serviceEvents.serviceDate, `${yearNum}-12-31`)
-        )
-      );
+      conditions.push(gte(schema.serviceEvents.serviceDate, `${yearNum}-01-01`));
+      conditions.push(lte(schema.serviceEvents.serviceDate, `${yearNum}-12-31`));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
     }
 
     const allServices = await query;
@@ -351,12 +363,16 @@ breeding.get('/performance', async (c) => {
  */
 breeding.get('/services', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const { cowId, startDate, endDate } = c.req.query();
 
   try {
     let query = db.select().from(schema.serviceEvents);
 
     const conditions = [];
+
+    // Always scope to the user's active farm
+    conditions.push(eq(schema.serviceEvents.farmId, user.activeFarmId!));
 
     if (cowId) {
       conditions.push(eq(schema.serviceEvents.cowId, parseInt(cowId)));
@@ -414,6 +430,7 @@ breeding.get('/services', async (c) => {
  */
 breeding.post('/services', zValidator('json', createServiceSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const data = c.req.valid('json');
 
   try {
@@ -439,6 +456,7 @@ breeding.post('/services', zValidator('json', createServiceSchema), async (c) =>
       .insert(schema.serviceEvents)
       .values({
         ...data,
+        farmId: user.activeFarmId!,
         expectedCalvingDate,
         expectedCalvingPeriod,
       })
@@ -457,6 +475,7 @@ breeding.post('/services', zValidator('json', createServiceSchema), async (c) =>
  */
 breeding.put('/services/:id', zValidator('json', updateServiceSchema), async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const data = c.req.valid('json');
 
@@ -488,7 +507,7 @@ breeding.put('/services/:id', zValidator('json', updateServiceSchema), async (c)
         ...updateData,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(schema.serviceEvents.id, id))
+      .where(and(eq(schema.serviceEvents.id, id), eq(schema.serviceEvents.farmId, user.activeFarmId!)))
       .returning();
 
     return c.json({ data: updated });
@@ -504,6 +523,7 @@ breeding.put('/services/:id', zValidator('json', updateServiceSchema), async (c)
  */
 breeding.delete('/services/:id', async (c) => {
   const db = c.get('db');
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
   if (isNaN(id)) {
@@ -513,7 +533,7 @@ breeding.delete('/services/:id', async (c) => {
   try {
     const [deleted] = await db
       .delete(schema.serviceEvents)
-      .where(eq(schema.serviceEvents.id, id))
+      .where(and(eq(schema.serviceEvents.id, id), eq(schema.serviceEvents.farmId, user.activeFarmId!)))
       .returning();
 
     if (!deleted) {

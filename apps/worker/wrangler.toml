@@ -23,5 +23,7 @@ bucket_name = "cattle-uploads"
 ENVIRONMENT = "development"
 
 # Secrets (set via: wrangler secret put <NAME>)
-# CF_ACCESS_TEAM_DOMAIN
-# CF_ACCESS_JWT_SECRET
+# JWT_SECRET
+# GOOGLE_CLIENT_ID
+# GOOGLE_CLIENT_SECRET
+# TURNSTILE_SECRET_KEY
