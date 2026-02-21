@@ -177,12 +177,13 @@ test.describe('Local Cattle Management System', () => {
       expect(body.activeFarmId).toBeGreaterThan(0)
     })
 
-    test('Dev login blocked in production', async ({ request }) => {
-      // This just verifies the endpoint exists locally (dev) - it returns 404 in production
+    test('Dev login works locally (guarded by DEV_AUTH_ENABLED env var)', async ({ request }) => {
+      // Endpoint is enabled locally via DEV_AUTH_ENABLED=true in .dev.vars
+      // In production (no DEV_AUTH_ENABLED) it returns 404
       const res = await request.post(`${API_URL}/api/auth/dev-login`, {
         data: { email: 'test@test.com' },
       })
-      // In dev environment it should succeed (200), not 404
+      // In dev environment it should succeed (200)
       expect(res.status()).toBe(200)
     })
 

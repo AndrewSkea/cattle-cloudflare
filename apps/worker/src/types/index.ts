@@ -10,6 +10,7 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   TURNSTILE_SECRET_KEY: string;
+  DEV_AUTH_ENABLED?: string; // Only set in .dev.vars, never in production
 }
 
 export interface AuthUser {

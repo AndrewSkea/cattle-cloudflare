@@ -256,7 +256,8 @@ auth.get('/me', authMiddleware, async (c) => {
  * Returns 404 in production.
  */
 auth.post('/dev-login', async (c) => {
-  if (c.env.ENVIRONMENT === 'production') {
+  // Only enabled when DEV_AUTH_ENABLED is set (local .dev.vars only, never in production)
+  if (!c.env.DEV_AUTH_ENABLED) {
     return c.json({ error: 'Not found' }, 404);
   }
 
