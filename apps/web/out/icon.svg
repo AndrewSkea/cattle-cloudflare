@@ -1,19 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Barn roof -->
-  <polygon points="1,15 16,2 31,15" fill="#8B1A1A"/>
-  <!-- Roof ridge cap -->
-  <polygon points="1,15 16,2 31,15 29,15 16,4 3,15" fill="#6B1010"/>
-  <!-- Barn body -->
-  <rect x="3" y="14" width="26" height="16" fill="#C0392B"/>
-  <!-- Left window -->
-  <rect x="6" y="18" width="5" height="4" rx="0.5" fill="#F0C040"/>
-  <!-- Right window -->
-  <rect x="21" y="18" width="5" height="4" rx="0.5" fill="#F0C040"/>
-  <!-- Door -->
-  <rect x="13" y="22" width="6" height="8" rx="0.5" fill="#7B3F00"/>
-  <!-- Door arch -->
-  <ellipse cx="16" cy="22" rx="3" ry="1.5" fill="#7B3F00"/>
-  <!-- Door cross beam -->
-  <line x1="16" y1="22" x2="16" y2="30" stroke="#5D2E00" stroke-width="0.5"/>
-  <line x1="13" y1="25" x2="19" y2="25" stroke="#5D2E00" stroke-width="0.5"/>
+  <g fill="#1a0a00">
+    <!-- Body -->
+    <ellipse cx="20" cy="17" rx="10" ry="7"/>
+    <!-- Neck -->
+    <rect x="10" y="12" width="6" height="8" rx="2"/>
+    <!-- Head -->
+    <ellipse cx="8" cy="15" rx="5.5" ry="5.5"/>
+    <!-- Snout -->
+    <ellipse cx="3.5" cy="17" rx="3" ry="2"/>
+    <!-- Ear -->
+    <ellipse cx="9.5" cy="8.5" rx="2.5" ry="2" transform="rotate(-20 9.5 8.5)"/>
+    <!-- Horn -->
+    <ellipse cx="12" cy="7" rx="1" ry="3" transform="rotate(25 12 7)"/>
+    <!-- Front legs -->
+    <rect x="11" y="22" width="2.5" height="8" rx="1"/>
+    <rect x="15" y="22" width="2.5" height="8" rx="1"/>
+    <!-- Back legs -->
+    <rect x="22" y="22" width="2.5" height="8" rx="1"/>
+    <rect x="26" y="22" width="2.5" height="8" rx="1"/>
+    <!-- Udder -->
+    <ellipse cx="19" cy="24" rx="5" ry="2"/>
+    <!-- Tail -->
+    <path d="M29,14 Q33,9 31,17" stroke="#1a0a00" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
 </svg>
