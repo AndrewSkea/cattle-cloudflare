@@ -65,6 +65,9 @@ app.use('/api/health/*', authMiddleware);
 app.use('/api/analytics/*', authMiddleware);
 app.use('/api/breeding/*', authMiddleware);
 app.use('/api/fields/*', authMiddleware);
+app.use('/api/machinery/*', authMiddleware);
+app.use('/api/workers/*', authMiddleware);
+app.use('/api/supplies/*', authMiddleware);
 
 // ==================== ROUTES ====================
 
