@@ -213,10 +213,24 @@ pnpm run build
 pnpm run pages:deploy
 ```
 
-### Run Tests
+### Run Production Tests (against deployed app)
 ```bash
 npx playwright test test-pages.spec.ts
 ```
+
+### Run Local E2E Tests (72 tests, all user flows)
+```bash
+# The config auto-starts both servers if not already running.
+# First time: ensure apps/web/out/ is built with local API URL:
+#   cd apps/web && pnpm build   (requires apps/web/.env.local with NEXT_PUBLIC_API_URL=http://localhost:8787)
+npx playwright test test-local.spec.ts --config=playwright.local.config.ts --reporter=list
+```
+
+**Key notes for local testing:**
+- `apps/worker/.dev.vars` must have `DEV_AUTH_ENABLED=true` (bypasses Google OAuth/Turnstile)
+- `apps/web/.env.local` must have `NEXT_PUBLIC_API_URL=http://localhost:8787`
+- Tests serve the static `apps/web/out/` build (not `next dev`) for reliable chunk loading
+- Re-run `cd apps/web && pnpm build` after any frontend changes
 
 ---
 

@@ -2,7 +2,9 @@
  * API Client for Cloudflare Worker Backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cattle-management-api.andrewskea-as.workers.dev';
+const PRODUCTION_API_URL = 'https://cattle-management-api.andrewskea-as.workers.dev';
+
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || PRODUCTION_API_URL;
 
 export class ApiClient {
   private baseUrl: string;
@@ -12,6 +14,19 @@ export class ApiClient {
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    // Safety guard: block localhost browsers from accidentally hitting production data.
+    // This can happen if the static build was made without NEXT_PUBLIC_API_URL set.
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+      this.baseUrl === PRODUCTION_API_URL
+    ) {
+      throw new Error(
+        'Local app is configured to use the PRODUCTION API.\n' +
+        'Set NEXT_PUBLIC_API_URL=http://localhost:8787 in apps/web/.env.local, then rebuild: cd apps/web && pnpm build'
+      );
+    }
+
     const url = `${this.baseUrl}${endpoint}`;
 
     const response = await fetch(url, {

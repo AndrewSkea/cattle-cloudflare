@@ -1,16 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, API_BASE_URL } from '@/lib/api-client'
 
 export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [devLoading, setDevLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLocal, setIsLocal] = useState(false)
 
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const urlError = searchParams?.get('error')
+
+  useEffect(() => {
+    // Show dev login button only when running on localhost
+    setIsLocal(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  }, [])
 
   const handleGoogleLogin = async () => {
     if (!turnstileToken) return
@@ -23,6 +30,28 @@ export default function LoginPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to initiate login')
       setLoading(false)
+    }
+  }
+
+  const handleDevLogin = async () => {
+    setDevLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/dev-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'dev@localhost', name: 'Dev User' }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as any
+        throw new Error(body.error || 'Dev login failed — is DEV_AUTH_ENABLED=true in .dev.vars?')
+      }
+      const { token } = await res.json() as { token: string }
+      document.cookie = `auth_token=${token}; path=/; SameSite=Lax`
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      setError(err.message)
+      setDevLoading(false)
     }
   }
 
@@ -48,6 +77,41 @@ export default function LoginPage() {
               <p className="text-red-800 text-sm">
                 {error || (urlError === 'no_code' ? 'Login was cancelled' : 'Authentication failed. Please try again.')}
               </p>
+            </div>
+          )}
+
+          {/* Dev login — localhost only */}
+          {isLocal && (
+            <div className="mb-6">
+              <div className="relative flex items-center justify-center mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-amber-200" />
+                </div>
+                <span className="relative bg-white px-3 text-xs font-medium text-amber-600 uppercase tracking-wide">
+                  Local Dev
+                </span>
+              </div>
+              <button
+                onClick={handleDevLogin}
+                disabled={devLoading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-50 border-2 border-amber-300 rounded-lg text-amber-800 font-medium hover:bg-amber-100 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <span>🔧</span>
+                {devLoading ? 'Logging in...' : 'Dev Login (local only)'}
+              </button>
+              <p className="text-center text-amber-600 text-xs mt-2">
+                Bypasses Google OAuth · Uses local database only
+              </p>
+            </div>
+          )}
+
+          {/* Divider before Google login */}
+          {isLocal && (
+            <div className="relative flex items-center justify-center mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <span className="relative bg-white px-3 text-xs text-gray-400">or sign in normally</span>
             </div>
           )}
 
