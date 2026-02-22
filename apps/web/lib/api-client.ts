@@ -3,31 +3,29 @@
  */
 
 const PRODUCTION_API_URL = 'https://cattle-management-api.andrewskea-as.workers.dev';
+const LOCAL_API_URL = 'http://localhost:8787';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || PRODUCTION_API_URL;
+/**
+ * Returns the correct API URL at call time based on the current browser hostname.
+ * This means the same static build works for both local dev and production —
+ * no rebuild required when switching environments.
+ */
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return LOCAL_API_URL;
+    }
+  }
+  return PRODUCTION_API_URL;
+}
+
+// Kept for backward-compat (login page uses it directly)
+export const API_BASE_URL = PRODUCTION_API_URL;
 
 export class ApiClient {
-  private baseUrl: string;
-
-  constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl;
-  }
-
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    // Safety guard: block localhost browsers from accidentally hitting production data.
-    // This can happen if the static build was made without NEXT_PUBLIC_API_URL set.
-    if (
-      typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-      this.baseUrl === PRODUCTION_API_URL
-    ) {
-      throw new Error(
-        'Local app is configured to use the PRODUCTION API.\n' +
-        'Set NEXT_PUBLIC_API_URL=http://localhost:8787 in apps/web/.env.local, then rebuild: cd apps/web && pnpm build'
-      );
-    }
-
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${getApiBaseUrl()}${endpoint}`;
 
     const response = await fetch(url, {
       ...options,
@@ -113,7 +111,7 @@ export class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${this.baseUrl}/api/upload/excel`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/upload/excel`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -597,7 +595,7 @@ export class ApiClient {
 
   async downloadExport(type: 'sales' | 'costs' | 'cattle' | 'full', params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    const url = `${this.baseUrl}/api/export/${type}${query}`;
+    const url = `${getApiBaseUrl()}/api/export/${type}${query}`;
     const response = await fetch(url, {
       credentials: 'include',
     });

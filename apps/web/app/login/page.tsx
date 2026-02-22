@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
-import { apiClient, API_BASE_URL } from '@/lib/api-client'
+import { apiClient, getApiBaseUrl } from '@/lib/api-client'
 
 export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
@@ -37,7 +37,7 @@ export default function LoginPage() {
     setDevLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/dev-login`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/dev-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'dev@localhost', name: 'Dev User' }),
