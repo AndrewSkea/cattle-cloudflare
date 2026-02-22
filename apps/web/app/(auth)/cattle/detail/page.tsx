@@ -39,7 +39,7 @@ interface CattleDetail {
   calvings: any[]
 }
 
-type TabId = 'info' | 'family' | 'health' | 'history'
+type TabId = 'info' | 'family' | 'health' | 'history' | 'financials'
 
 const actionButtons: Array<{ action: CattleAction; label: string; icon: string; color: string }> = [
   { action: 'addChild', label: 'Add Child', icon: '🐄', color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
@@ -68,6 +68,11 @@ function CattleDetailContent() {
   const [familyLoading, setFamilyLoading] = useState(false)
   const familyLoadedRef = useRef(false)
 
+  // Financials tab data (lazy loaded)
+  const [animalCosts, setAnimalCosts] = useState<any>(null)
+  const [costsLoading, setCostsLoading] = useState(false)
+  const costsLoadedRef = useRef(false)
+
   // Cattle actions
   const { activeModal, selectedAnimal, openAction, closeAction } = useCattleActions()
 
@@ -75,8 +80,10 @@ function CattleDetailContent() {
     if (id) {
       loadCattleDetails()
       familyLoadedRef.current = false
+      costsLoadedRef.current = false
       setTreeData(null)
       setStatsData(null)
+      setAnimalCosts(null)
       setActiveTab('info')
     }
   }, [id])
@@ -85,6 +92,14 @@ function CattleDetailContent() {
     if (activeTab === 'family' && !familyLoadedRef.current && id) {
       familyLoadedRef.current = true
       loadFamilyData()
+    }
+    if (activeTab === 'financials' && !costsLoadedRef.current && id) {
+      costsLoadedRef.current = true
+      setCostsLoading(true)
+      apiClient.getAnimalCosts(Number(id))
+        .then((res: any) => setAnimalCosts(res.data))
+        .catch(() => {})
+        .finally(() => setCostsLoading(false))
     }
   }, [activeTab, id])
 
@@ -180,6 +195,7 @@ function CattleDetailContent() {
     { id: 'info', label: 'Info' },
     { id: 'family', label: 'Family' },
     { id: 'health', label: 'Health' },
+    { id: 'financials', label: 'Financials' },
     ...(isFemale ? [{ id: 'history' as TabId, label: 'History' }] : []),
   ]
 
@@ -268,6 +284,90 @@ function CattleDetailContent() {
 
       {activeTab === 'health' && (
         <HealthTab cattle={cattle} />
+      )}
+
+      {activeTab === 'financials' && (
+        <div className="space-y-4">
+          {costsLoading ? (
+            <div className="text-center py-8 text-gray-400">Loading costs...</div>
+          ) : !animalCosts || animalCosts.allocations.length === 0 ? (
+            <div className="bg-white rounded-lg border p-6 text-center">
+              <p className="text-gray-500 text-sm">Costs will appear here as you log supplies and expenses.</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary card */}
+              <div className="bg-white rounded-lg border p-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Cost Summary</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">Total Costs</p>
+                    <p className="text-lg font-bold text-gray-900">{'\u00A3'}{animalCosts.totalCosts.toFixed(2)}</p>
+                  </div>
+                  {cattle.sale ? (
+                    <>
+                      <div>
+                        <p className="text-xs text-gray-500">Sale Price</p>
+                        <p className="text-lg font-bold text-gray-900">{'\u00A3'}{cattle.sale.salePrice?.toFixed(2) || '\u2014'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Profit</p>
+                        <p className={`text-lg font-bold ${(cattle.sale.salePrice || 0) - animalCosts.totalCosts >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {'\u00A3'}{((cattle.sale.salePrice || 0) - animalCosts.totalCosts).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Margin</p>
+                        <p className="text-lg font-bold text-gray-900">
+                          {cattle.sale.salePrice
+                            ? (((cattle.sale.salePrice - animalCosts.totalCosts) / cattle.sale.salePrice) * 100).toFixed(1) + '%'
+                            : '\u2014'}
+                        </p>
+                      </div>
+                    </>
+                  ) : cattle.onFarm ? (
+                    <div>
+                      <p className="text-xs text-gray-500">Costs to Date</p>
+                      <p className="text-lg font-bold text-orange-600">{'\u00A3'}{animalCosts.totalCosts.toFixed(2)}</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Cost breakdown by month */}
+              <div className="bg-white rounded-lg border p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-700">Cost Breakdown</h4>
+                  <a
+                    href={`/cattle/report?id=${cattle.id}`}
+                    target="_blank"
+                    className="text-xs text-green-600 hover:text-green-700"
+                  >
+                    View Report
+                  </a>
+                </div>
+                <div className="space-y-3">
+                  {animalCosts.byMonth.map((month: any) => (
+                    <div key={month.month}>
+                      <div className="flex justify-between items-center text-sm mb-1">
+                        <span className="font-medium text-gray-700">{month.month}</span>
+                        <span className="text-gray-500">{'\u00A3'}{month.total.toFixed(2)}</span>
+                      </div>
+                      <div className="space-y-1 pl-3">
+                        {month.items.map((item: any) => (
+                          <div key={item.id} className="flex justify-between text-xs text-gray-500">
+                            <span>{item.description || item.sourceType}</span>
+                            <span>{'\u00A3'}{item.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {activeTab === 'history' && isFemale && (

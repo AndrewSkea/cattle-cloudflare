@@ -70,6 +70,7 @@ export default function SuppliesPage() {
   const [fSupplier, setFSupplier] = useState('')
   const [fFieldId, setFFieldId] = useState('')
   const [fNotes, setFNotes] = useState('')
+  const [fAllocateTo, setFAllocateTo] = useState('none')
 
   // Auto-calculate total when qty and unit cost change
   useEffect(() => {
@@ -97,7 +98,7 @@ export default function SuppliesPage() {
     if (!fName.trim() || !fTotalCost) return
     setSaving(true)
     try {
-      await apiClient.createSupply({
+      const result: any = await apiClient.createSupply({
         category: fCategory,
         name: fName.trim(),
         date: fDate,
@@ -109,9 +110,23 @@ export default function SuppliesPage() {
         fieldId: fFieldId ? Number(fFieldId) : undefined,
         notes: fNotes || undefined,
       })
+      // Allocate cost to animals if requested
+      if (fAllocateTo !== 'none') {
+        try {
+          await apiClient.allocateCost({
+            amount: Number(fTotalCost),
+            description: fName.trim(),
+            date: fDate,
+            groupType: fAllocateTo as any,
+            fieldId: fAllocateTo === 'field' && fFieldId ? Number(fFieldId) : undefined,
+            sourceType: 'supply',
+            sourceId: result.data?.id,
+          })
+        } catch { /* allocation is optional, don't block the purchase */ }
+      }
       setShowAdd(false)
       setFCategory('fertiliser'); setFName(''); setFDate(new Date().toISOString().split('T')[0])
-      setFQty(''); setFUnit('kg'); setFUnitCost(''); setFTotalCost(''); setFSupplier(''); setFFieldId(''); setFNotes('')
+      setFQty(''); setFUnit('kg'); setFUnitCost(''); setFTotalCost(''); setFSupplier(''); setFFieldId(''); setFNotes(''); setFAllocateTo('none')
       await load()
     } catch (err: any) { setError(err.message) }
     finally { setSaving(false) }
@@ -223,6 +238,17 @@ export default function SuppliesPage() {
               <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
               <input value={fNotes} onChange={e => setFNotes(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Allocate to</label>
+              <select value={fAllocateTo} onChange={e => setFAllocateTo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="none">None</option>
+                <option value="all_herd">Whole Herd</option>
+                <option value="cows">All Cows</option>
+                <option value="calves">All Calves (born this year)</option>
+                <option value="field">By Field</option>
+              </select>
             </div>
           </div>
           <div className="flex justify-end gap-2">

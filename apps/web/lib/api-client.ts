@@ -565,6 +565,53 @@ export class ApiClient {
     const q = new URLSearchParams(params as any).toString();
     return this.request(`/api/analytics/financial${q ? `?${q}` : ''}`);
   }
+
+  // ==================== COST ALLOCATION ====================
+
+  async allocateCost(data: {
+    amount: number;
+    description: string;
+    date: string;
+    groupType: 'all_herd' | 'cows' | 'calves' | 'field' | 'custom';
+    cattleIds?: number[];
+    fieldId?: number;
+    sourceType?: string;
+    sourceId?: number;
+  }) {
+    return this.request('/api/costs/allocate', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getAnimalCosts(cattleId: number) {
+    return this.request(`/api/costs/animal/${cattleId}`);
+  }
+
+  async getProfitability() {
+    return this.request('/api/costs/profitability');
+  }
+
+  async getAnimalReport(cattleId: number) {
+    return this.request(`/api/costs/report/${cattleId}`);
+  }
+
+  // ==================== EXPORT ====================
+
+  async downloadExport(type: 'sales' | 'costs' | 'cattle' | 'full', params?: Record<string, string>) {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    const url = `${this.baseUrl}/api/export/${type}${query}`;
+    const response = await fetch(url, {
+      credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = response.headers.get('content-disposition')?.split('filename=')[1]?.replace(/"/g, '') || `${type}-export.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  }
 }
 
 export const apiClient = new ApiClient();

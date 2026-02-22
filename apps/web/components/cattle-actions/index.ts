@@ -11,3 +11,4 @@ export {
   MoveToMartModal,
 } from './modals'
 export { useCattleActions } from './use-cattle-actions'
+export { LogCostModal } from './log-cost-modal'

@@ -29,6 +29,13 @@
       "when": 1771633589999,
       "tag": "0003_hot_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1771719814833,
+      "tag": "0004_next_power_man",
+      "breakpoints": true
     }
   ]
 }

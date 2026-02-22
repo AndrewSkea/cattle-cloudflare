@@ -378,6 +378,40 @@ export const supplyPurchases = sqliteTable('supply_purchases', {
   categoryIdx: index('idx_supplies_category').on(table.category),
 }));
 
+// ==================== COST ALLOCATIONS TABLE ====================
+
+export const costAllocations = sqliteTable('cost_allocations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type').notNull(), // 'supply' | 'machinery' | 'payroll' | 'direct'
+  sourceId: integer('source_id'), // FK to source table, null for direct costs
+  cattleId: integer('cattle_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
+  amount: real('amount').notNull(),
+  date: text('date').notNull(),
+  description: text('description'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_cost_alloc_farm').on(table.farmId),
+  cattleIdx: index('idx_cost_alloc_cattle').on(table.cattleId),
+  sourceIdx: index('idx_cost_alloc_source').on(table.sourceType, table.sourceId),
+}));
+
+// ==================== ALLOCATION GROUPS TABLE ====================
+
+export const allocationGroups = sqliteTable('allocation_groups', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type').notNull(),
+  sourceId: integer('source_id'),
+  groupType: text('group_type').notNull(), // 'all_herd' | 'cows' | 'calves' | 'field' | 'custom'
+  groupTarget: integer('group_target'), // field ID if by field, null otherwise
+  animalCount: integer('animal_count').notNull(),
+  totalAmount: real('total_amount').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  farmIdx: index('idx_alloc_group_farm').on(table.farmId),
+}));
+
 // ==================== RELATIONS ====================
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -422,6 +456,7 @@ export const cattleRelations = relations(cattle, ({ one, many }) => ({
   sale: one(saleEvents),
   healthEvents: many(healthEvents),
   fieldAssignments: many(fieldAssignments),
+  costAllocations: many(costAllocations),
 }));
 
 export const calvingEventsRelations = relations(calvingEvents, ({ one, many }) => ({
@@ -503,6 +538,15 @@ export const supplyPurchasesRelations = relations(supplyPurchases, ({ one }) => 
   field: one(fields, { fields: [supplyPurchases.fieldId], references: [fields.id] }),
 }));
 
+export const costAllocationsRelations = relations(costAllocations, ({ one }) => ({
+  farm: one(farms, { fields: [costAllocations.farmId], references: [farms.id] }),
+  animal: one(cattle, { fields: [costAllocations.cattleId], references: [cattle.id] }),
+}));
+
+export const allocationGroupsRelations = relations(allocationGroups, ({ one }) => ({
+  farm: one(farms, { fields: [allocationGroups.farmId], references: [farms.id] }),
+}));
+
 // ==================== TYPE EXPORTS ====================
 
 export type Cattle = typeof cattle.$inferSelect;
@@ -552,3 +596,9 @@ export type NewFarmMember = typeof farmMembers.$inferInsert;
 
 export type FarmInvite = typeof farmInvites.$inferSelect;
 export type NewFarmInvite = typeof farmInvites.$inferInsert;
+
+export type CostAllocation = typeof costAllocations.$inferSelect;
+export type NewCostAllocation = typeof costAllocations.$inferInsert;
+
+export type AllocationGroup = typeof allocationGroups.$inferSelect;
+export type NewAllocationGroup = typeof allocationGroups.$inferInsert;

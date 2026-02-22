@@ -14,6 +14,7 @@ import {
   AddNotesModal,
   SellModal,
   MoveToMartModal,
+  LogCostModal,
 } from '@/components/cattle-actions'
 
 interface Cattle {
@@ -44,6 +45,7 @@ export default function CattlePage() {
   // Batch modals
   const [sellModalOpen, setSellModalOpen] = useState(false)
   const [martModalOpen, setMartModalOpen] = useState(false)
+  const [costModalOpen, setCostModalOpen] = useState(false)
 
   const {
     activeModal,
@@ -191,12 +193,20 @@ export default function CattlePage() {
             {loading ? 'Loading...' : `${cattle.length} total records`}
           </p>
         </div>
-        <Link
-          href="/cattle/new"
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-lg hover:shadow-xl w-full md:w-auto"
-        >
-          + Add New Cattle
-        </Link>
+        <div className="flex gap-2 w-full md:w-auto">
+          <button
+            onClick={() => apiClient.downloadExport('cattle', { status: statusFilter === 'On Farm' ? 'on_farm' : statusFilter === 'Sold' ? 'sold' : 'all' })}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 h-10 px-4 py-2"
+          >
+            Export
+          </button>
+          <Link
+            href="/cattle/new"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-lg hover:shadow-xl flex-1 md:flex-none"
+          >
+            + Add New Cattle
+          </Link>
+        </div>
       </div>
 
       {/* Filters Card */}
@@ -238,6 +248,12 @@ export default function CattlePage() {
               className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
             >
               £ Sell
+            </button>
+            <button
+              onClick={() => setCostModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            >
+              Log Cost
             </button>
             <button
               onClick={() => setMartModalOpen(true)}
@@ -456,6 +472,12 @@ export default function CattlePage() {
         onClose={() => setMartModalOpen(false)}
         animals={selectedAnimals}
         onSuccess={handleActionSuccess}
+      />
+      <LogCostModal
+        open={costModalOpen}
+        onClose={() => setCostModalOpen(false)}
+        animals={selectedAnimals}
+        onSuccess={() => { setCostModalOpen(false); clearSelection(); }}
       />
     </div>
   )

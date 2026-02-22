@@ -27,6 +27,8 @@ import fieldsRoutes from './routes/fields';
 import machineryRoutes from './routes/machinery';
 import workersRoutes from './routes/workers';
 import suppliesRoutes from './routes/supplies';
+import costsRoutes from './routes/costs';
+import exportRoutes from './routes/export';
 
 const app = new Hono<{ Bindings: Env; Variables: { db: ReturnType<typeof getDrizzleClient>; user: AuthUser } }>();
 
@@ -68,6 +70,8 @@ app.use('/api/fields/*', authMiddleware);
 app.use('/api/machinery/*', authMiddleware);
 app.use('/api/workers/*', authMiddleware);
 app.use('/api/supplies/*', authMiddleware);
+app.use('/api/costs/*', authMiddleware);
+app.use('/api/export/*', authMiddleware);
 
 // ==================== ROUTES ====================
 
@@ -103,6 +107,8 @@ app.route('/api/fields', fieldsRoutes);
 app.route('/api/machinery', machineryRoutes);
 app.route('/api/workers', workersRoutes);
 app.route('/api/supplies', suppliesRoutes);
+app.route('/api/costs', costsRoutes);
+app.route('/api/export', exportRoutes);
 
 // 404 handler
 app.notFound((c) => {
