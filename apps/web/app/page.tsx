@@ -111,7 +111,7 @@ export default function Landing() {
       </section>
 
       <footer className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8 text-xs text-stone-500">
-        <span>© {new Date().getFullYear()} Steading</span>
+        <span>© {new Date().getFullYear()} HoovesWho</span>
         <Link href="/login" className="hover:text-stone-800">Sign in</Link>
       </footer>
     </div>

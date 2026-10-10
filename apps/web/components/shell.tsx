@@ -49,7 +49,7 @@ export function Logo({ className, light }: { className?: string; light?: boolean
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icon.svg" alt="" className="size-5" />
       </span>
-      <span className={cn('font-display text-lg font-semibold tracking-tight', light ? 'text-white' : 'text-stone-900')}>Steading</span>
+      <span className={cn('font-display text-lg font-semibold tracking-tight', light ? 'text-white' : 'text-stone-900')}>HoovesWho</span>
     </span>
   )
 }

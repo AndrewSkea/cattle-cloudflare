@@ -2,7 +2,7 @@
   "name": "cattle-cloudflare",
   "version": "1.0.0",
   "private": true,
-  "description": "Steading \u2014 farm management on Cloudflare Workers",
+  "description": "HoovesWho \u2014 farm management on Cloudflare Workers",
   "scripts": {
     "dev": "pnpm --filter web build && pnpm --filter worker dev",
     "build": "pnpm --filter web build && pnpm --filter worker build",

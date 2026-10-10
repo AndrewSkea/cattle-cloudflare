@@ -1,4 +1,4 @@
-# CLAUDE.md — Steading (farm management)
+# CLAUDE.md — HoovesWho (farm management)
 
 Full-stack farm management: livestock (multi-species) with family trees, health, breeding, land & map,
 equipment servicing, inventory, tasks, finances and multi-user farms with roles.

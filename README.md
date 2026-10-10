@@ -1,4 +1,4 @@
-# Steading — farm management
+# HoovesWho — farm management
 
 Livestock records with family trees, health and breeding, land on a satellite map, equipment servicing,
 inventory, tasks, finances and multi-user farms with roles — on Cloudflare Workers + D1.

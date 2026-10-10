@@ -7,7 +7,7 @@ const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap
 const display = Fraunces({ subsets: ['latin'], variable: '--font-display', display: 'swap', axes: ['opsz'] })
 
 export const metadata: Metadata = {
-  title: { default: 'Steading — Farm management', template: '%s · Steading' },
+  title: { default: 'HoovesWho — Farm management', template: '%s · HoovesWho' },
   description: 'Livestock, land, machinery, people and money — one place to run your farm.',
 }
 
