@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1768068737672,
-      "tag": "0000_panoramic_firebird",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1771396975829,
-      "tag": "0001_condemned_sage",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1771447622563,
-      "tag": "0002_lovely_famine",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1771633589999,
-      "tag": "0003_hot_thunderbolts",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1771719814833,
-      "tag": "0004_next_power_man",
+      "when": 1791584818532,
+      "tag": "0000_init",
       "breakpoints": true
     }
   ]

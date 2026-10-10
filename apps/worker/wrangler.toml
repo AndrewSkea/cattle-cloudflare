@@ -1,29 +1,29 @@
 name = "cattle-management-api"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 [observability]
 enabled = true
 
-# D1 Database binding (update database_id after creation)
+# The Next.js static export is served from the same origin as the API.
+# Build it first: pnpm --filter web build
+[assets]
+directory = "../web/out"
+binding = "ASSETS"
+html_handling = "drop-trailing-slash"
+not_found_handling = "404-page"
+run_worker_first = ["/api/*"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "cattle-management-db"
-database_id = "2ea35c9f-57a9-4866-b118-5d8cd7a2375e"
+database_id = "99b323c3-60a4-4fb3-b564-939946c90ce2"
 migrations_dir = "src/db/migrations"
 
-# R2 Storage binding
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "cattle-uploads"
-
-# Environment variables
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 
-# Secrets (set via: wrangler secret put <NAME>)
-# JWT_SECRET
-# GOOGLE_CLIENT_ID
-# GOOGLE_CLIENT_SECRET
-# TURNSTILE_SECRET_KEY
+# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# Local development: copy .dev.vars.example to .dev.vars

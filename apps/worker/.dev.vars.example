@@ -1,0 +1,5 @@
+ENVIRONMENT=development
+DEV_AUTH_ENABLED=true
+JWT_SECRET=local-development-secret-change-me
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

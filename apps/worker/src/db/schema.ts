@@ -1,604 +1,416 @@
 /**
- * Drizzle ORM Schema for Cattle Management System
+ * Drizzle ORM schema — Farm management (v2)
  *
- * This schema matches the Python SQLAlchemy models from the Flask application
- * exactly, ensuring zero data loss during migration.
+ * Every farm-owned table carries `farm_id`; every query must be scoped by it.
+ * Dates are ISO `YYYY-MM-DD` strings, timestamps are ISO datetime strings.
  */
 
-import { sqliteTable, integer, text, real, index } from 'drizzle-orm/sqlite-core';
-import { relations, sql } from 'drizzle-orm';
+import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
-// ==================== USERS TABLE ====================
+const createdAt = () => text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`);
+const updatedAt = () => text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`);
+
+// ==================== IDENTITY ====================
 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  googleId: text('google_id').notNull().unique(),
-  email: text('email').notNull(),
+  googleId: text('google_id').unique(), // null until first Google sign-in (pre-provisioned users)
+  email: text('email').notNull().unique(), // always lower-case
   name: text('name'),
   avatarUrl: text('avatar_url'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  googleIdIdx: index('idx_user_google_id').on(table.googleId),
-  emailIdx: index('idx_user_email').on(table.email),
-}));
-
-// ==================== FARMS TABLE ====================
+  phone: text('phone'),
+  lastFarmId: integer('last_farm_id'),
+  lastLoginAt: text('last_login_at'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
 
 export const farms = sqliteTable('farms', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  slugIdx: index('idx_farm_slug').on(table.slug),
-}));
-
-// ==================== FARM MEMBERS TABLE ====================
+  holdingNumber: text('holding_number'), // e.g. UK CPH number
+  address: text('address'),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  zoom: integer('zoom'),
+  boundary: text('boundary'), // GeoJSON Polygon geometry
+  currency: text('currency').notNull().default('GBP'),
+  areaUnit: text('area_unit').notNull().default('ha'), // ha | ac
+  species: text('species').notNull().default('["cattle"]'), // JSON array of species kept
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
 
 export const farmMembers = sqliteTable('farm_members', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  role: text('role').notNull(), // 'owner' | 'manager' | 'worker' | 'viewer'
-  joinedAt: text('joined_at').default(sql`CURRENT_TIMESTAMP`),
-  expiresAt: text('expires_at'), // null = permanent
-  removedAt: text('removed_at'), // null = active
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmUserIdx: index('idx_farm_member_farm_user').on(table.farmId, table.userId),
-  userIdx: index('idx_farm_member_user').on(table.userId),
+  role: text('role').notNull(), // owner | manager | worker | viewer
+  joinedAt: text('joined_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: text('expires_at'),
+  removedAt: text('removed_at'),
+}, (t) => ({
+  farmUser: uniqueIndex('ux_member_farm_user').on(t.farmId, t.userId),
+  user: index('idx_member_user').on(t.userId),
 }));
-
-// ==================== FARM INVITES TABLE ====================
 
 export const farmInvites = sqliteTable('farm_invites', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   code: text('code').notNull().unique(),
   role: text('role').notNull(),
-  maxUses: integer('max_uses'), // null = unlimited
-  usedCount: integer('used_count').default(0),
-  accessDuration: integer('access_duration'), // null = permanent, otherwise days
-  expiresAt: text('expires_at'), // null = never (link expiry)
+  email: text('email'), // optional: restrict to this address
+  note: text('note'),
+  maxUses: integer('max_uses'),
+  usedCount: integer('used_count').notNull().default(0),
+  accessDays: integer('access_days'), // membership length; null = permanent
+  expiresAt: text('expires_at'), // link expiry
+  revokedAt: text('revoked_at'),
   createdBy: integer('created_by').notNull().references(() => users.id),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  codeIdx: index('idx_invite_code').on(table.code),
-  farmIdx: index('idx_invite_farm').on(table.farmId),
+  createdAt: createdAt(),
+}, (t) => ({
+  farm: index('idx_invite_farm').on(t.farmId),
 }));
 
-// ==================== CATTLE TABLE ====================
+// ==================== LAND ====================
 
-export const cattle = sqliteTable('cattle', {
-  // Primary key
-  id: integer('id').primaryKey({ autoIncrement: true }),
-
-  // Farm ownership
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-
-  // Identification fields
-  tagNo: text('tag_no').notNull().unique(),      // UK EID tag (unique identifier)
-  managementTag: text('management_tag'),          // User-friendly management number
-  yob: integer('yob').notNull(),                  // Year of birth
-  dob: text('dob').notNull(),                     // Date of birth (ISO 8601 string)
-
-  // Physical attributes
-  breed: text('breed'),                           // Breed code (Char, AA, Lim, Simm, Luing)
-  sex: text('sex'),                               // Sex (fem, male, steer, hief, fem-clf)
-  size: integer('size'),                          // Size classification (1=large, 4=small)
-
-  // Parent relationships (self-referencing for maternal lineage)
-  damTag: integer('dam_tag').references((): any => cattle.id),  // Foreign key to mother
-
-  // Current status
-  onFarm: integer('on_farm', { mode: 'boolean' }).default(true),
-  currentStatus: text('current_status'),          // Active, Sold, Died, etc.
-
-  // Notes
-  notes: text('notes'),
-
-  // Timestamps
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  // Indexes for performance (matching Python model)
-  tagNoIdx: index('idx_tag_no').on(table.tagNo),
-  managementTagIdx: index('idx_management_tag').on(table.managementTag),
-  damTagIdx: index('idx_dam_tag').on(table.damTag),  // Critical for lineage queries
-  farmIdx: index('idx_cattle_farm').on(table.farmId),
-}));
-
-// ==================== CALVING EVENTS TABLE ====================
-
-export const calvingEvents = sqliteTable('calving_events', {
-  // Primary key
-  id: integer('id').primaryKey({ autoIncrement: true }),
-
-  // Farm ownership
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-
-  // Relationships
-  motherId: integer('mother_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
-  calfId: integer('calf_id').references(() => cattle.id),
-
-  // Calving information
-  calvingDate: text('calving_date').notNull(),    // ISO 8601 date string
-  calvingYear: integer('calving_year').notNull(),
-  calvingMonth: text('calving_month'),            // Month name
-  calfSex: text('calf_sex'),                      // Sex of calf
-  sire: text('sire'),                             // Bull breed
-  daysSinceLastCalving: integer('days_since_last_calving'),  // Calving interval
-
-  // Notes
-  notes: text('notes'),
-
-  // Timestamps
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  motherIdx: index('idx_calving_mother').on(table.motherId),
-  dateIdx: index('idx_calving_date').on(table.calvingDate),
-  farmIdx: index('idx_calving_farm').on(table.farmId),
-}));
-
-// ==================== SERVICE EVENTS TABLE ====================
-
-export const serviceEvents = sqliteTable('service_events', {
-  // Primary key
-  id: integer('id').primaryKey({ autoIncrement: true }),
-
-  // Farm ownership
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-
-  // Relationships
-  cowId: integer('cow_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
-
-  // Service information
-  serviceDate: text('service_date').notNull(),    // ISO 8601 date string
-  sire: text('sire'),                             // Bull breed
-
-  // Expected calving
-  expectedCalvingDate: text('expected_calving_date'),  // Service date + 283 days
-  expectedCalvingPeriod: text('expected_calving_period'),
-
-  // Link to actual calving event (once calf is born)
-  calvingEventId: integer('calving_event_id').references(() => calvingEvents.id),
-  successful: integer('successful', { mode: 'boolean' }),
-
-  // Notes
-  notes: text('notes'),
-
-  // Timestamps
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  cowIdx: index('idx_service_cow').on(table.cowId),
-  dateIdx: index('idx_service_date').on(table.serviceDate),
-  expectedDateIdx: index('idx_expected_calving').on(table.expectedCalvingDate),
-  farmIdx: index('idx_service_farm').on(table.farmId),
-}));
-
-// ==================== SALE EVENTS TABLE ====================
-
-export const saleEvents = sqliteTable('sale_events', {
-  // Primary key
-  id: integer('id').primaryKey({ autoIncrement: true }),
-
-  // Farm ownership
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-
-  // Relationship (one-to-one with cattle)
-  animalId: integer('animal_id').notNull().unique().references(() => cattle.id, { onDelete: 'cascade' }),
-
-  // Event information
-  eventDate: text('event_date').notNull(),        // ISO 8601 date string
-  eventType: text('event_type'),                  // 'Sold' or 'Died'
-  ageMonths: integer('age_months'),
-
-  // Financial data
-  weightKg: real('weight_kg'),                    // Weight in kilograms
-  salePrice: real('sale_price'),                  // Sale price in GBP
-  kgPerMonth: real('kg_per_month'),               // Growth rate (weight / age)
-  pricePerMonth: real('price_per_month'),         // Return rate (price / age)
-
-  // Notes
-  notes: text('notes'),
-
-  // Timestamps
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  animalIdx: index('idx_sale_animal').on(table.animalId),
-  dateIdx: index('idx_sale_date').on(table.eventDate),
-  farmIdx: index('idx_sale_farm').on(table.farmId),
-}));
-
-// ==================== HEALTH EVENTS TABLE ====================
-
-export const healthEvents = sqliteTable('health_events', {
-  // Primary key
-  id: integer('id').primaryKey({ autoIncrement: true }),
-
-  // Farm ownership
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-
-  // Relationship
-  animalId: integer('animal_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
-
-  // Event information
-  eventDate: text('event_date').notNull(),        // ISO 8601 date string
-  eventType: text('event_type'),                  // Type of health event (feet trimming, vaccination, etc.)
-  description: text('description'),
-  numericValue: real('numeric_value'),  // For weight, temperature, etc.
-
-  // Timestamps
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  animalIdx: index('idx_health_animal').on(table.animalId),
-  dateIdx: index('idx_health_date').on(table.eventDate),
-  farmIdx: index('idx_health_farm').on(table.farmId),
-}));
-
-// ==================== FIELDS TABLE ====================
-
-export const fields = sqliteTable('fields', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  fieldType: text('field_type').default('grazing'), // grazing/silage/hay/housing
-  polygon: text('polygon'), // GeoJSON string of polygon coordinates
-  centerLat: real('center_lat'),
-  centerLng: real('center_lng'),
-  area: real('area'), // hectares
-  capacity: integer('capacity'),
-  color: text('color').default('#22c55e'),
-  notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_fields_farm').on(table.farmId),
-}));
-
-// ==================== FIELD ASSIGNMENTS TABLE ====================
-
-export const fieldAssignments = sqliteTable('field_assignments', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  farmId: integer('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-  cattleId: integer('cattle_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
-  fieldId: integer('field_id').notNull().references(() => fields.id, { onDelete: 'cascade' }),
-  assignedDate: text('assigned_date').notNull(),
-  removedDate: text('removed_date'), // null = currently in field
-  notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  cattleIdx: index('idx_assignment_cattle').on(table.cattleId),
-  fieldIdx: index('idx_assignment_field').on(table.fieldId),
-  farmIdx: index('idx_assignment_farm').on(table.farmId),
-}));
-
-// ==================== MACHINERY TABLE ====================
-
-export const machinery = sqliteTable('machinery', {
+export const landParcels = sqliteTable('land_parcels', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  type: text('type').notNull(), // tractor|trailer|sprayer|harvester|ATV|other
+  landUse: text('land_use').notNull().default('pasture'), // pasture|silage|hay|arable|woodland|yard|other
+  tenure: text('tenure').notNull().default('owned'), // owned|rented|licensed|other
+  rentAnnual: real('rent_annual'),
+  polygon: text('polygon'), // GeoJSON Polygon geometry
+  areaHa: real('area_ha'),
+  color: text('color'),
+  soilType: text('soil_type'),
+  capacity: integer('capacity'),
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_parcel_farm').on(t.farmId),
+}));
+
+export const structures = sqliteTable('structures', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  kind: text('kind').notNull().default('barn'), // barn|shed|yard|pen|silo|water|gate|handling|house|store|other
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  capacity: integer('capacity'),
+  condition: text('condition'), // good|fair|poor
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_structure_farm').on(t.farmId),
+}));
+
+// ==================== LIVESTOCK ====================
+
+export const animals = sqliteTable('animals', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  species: text('species').notNull().default('cattle'), // cattle|sheep|goat|pig|horse|poultry|other
+  tagNo: text('tag_no').notNull(),
+  managementTag: text('management_tag'),
+  name: text('name'),
+  sex: text('sex').notNull(), // female|male
+  castrated: integer('castrated', { mode: 'boolean' }).notNull().default(false),
+  breed: text('breed'),
+  colour: text('colour'),
+  dob: text('dob'),
+  birthYear: integer('birth_year'),
+  damId: integer('dam_id').references((): any => animals.id, { onDelete: 'set null' }),
+  sireId: integer('sire_id').references((): any => animals.id, { onDelete: 'set null' }),
+  sireName: text('sire_name'), // external / AI sire
+  size: integer('size'), // frame score 1 (large) … 4 (small)
+  parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  structureId: integer('structure_id').references(() => structures.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('active'), // active|sold|died|culled|missing
+  origin: text('origin').notNull().default('born'), // born|purchased
+  purchaseDate: text('purchase_date'),
+  purchasePrice: real('purchase_price'),
+  purchaseSource: text('purchase_source'),
+  exitDate: text('exit_date'),
+  exitReason: text('exit_reason'),
+  salePrice: real('sale_price'),
+  saleWeightKg: real('sale_weight_kg'),
+  buyer: text('buyer'),
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farmTag: uniqueIndex('ux_animal_farm_tag').on(t.farmId, t.tagNo),
+  farmSpecies: index('idx_animal_farm_species').on(t.farmId, t.species, t.status),
+  dam: index('idx_animal_dam').on(t.damId),
+  sire: index('idx_animal_sire').on(t.sireId),
+}));
+
+export const healthRecords = sqliteTable('health_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  animalId: integer('animal_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  type: text('type').notNull(), // vaccination|treatment|test|procedure|vet_visit|observation|injury
+  title: text('title').notNull(),
+  product: text('product'),
+  dose: text('dose'),
+  batchNo: text('batch_no'),
+  administeredBy: text('administered_by'),
+  vet: text('vet'),
+  result: text('result'),
+  withdrawalMeatUntil: text('withdrawal_meat_until'),
+  withdrawalMilkUntil: text('withdrawal_milk_until'),
+  nextDueDate: text('next_due_date'),
+  cost: real('cost'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farmDate: index('idx_health_farm_date').on(t.farmId, t.date),
+  animal: index('idx_health_animal').on(t.animalId),
+  due: index('idx_health_due').on(t.farmId, t.nextDueDate),
+}));
+
+export const weightRecords = sqliteTable('weight_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  animalId: integer('animal_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  weightKg: real('weight_kg').notNull(),
+  conditionScore: real('condition_score'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+}, (t) => ({
+  animal: index('idx_weight_animal').on(t.animalId, t.date),
+  farm: index('idx_weight_farm').on(t.farmId),
+}));
+
+export const breedingRecords = sqliteTable('breeding_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  animalId: integer('animal_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  event: text('event').notNull(), // service|scan|heat
+  date: text('date').notNull(),
+  method: text('method'), // natural|ai|et (services)
+  sireId: integer('sire_id').references(() => animals.id, { onDelete: 'set null' }),
+  sireName: text('sire_name'),
+  scanResult: text('scan_result'), // pregnant|empty|unknown (scans)
+  fetusCount: integer('fetus_count'),
+  expectedDueDate: text('expected_due_date'),
+  outcome: text('outcome').notNull().default('pending'), // pending|born|failed|aborted
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_breeding_farm').on(t.farmId, t.date),
+  animal: index('idx_breeding_animal').on(t.animalId),
+  due: index('idx_breeding_due').on(t.farmId, t.expectedDueDate),
+}));
+
+export const birthRecords = sqliteTable('birth_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  damId: integer('dam_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  offspringId: integer('offspring_id').references(() => animals.id, { onDelete: 'set null' }),
+  date: text('date').notNull(),
+  sex: text('sex'), // female|male|null
+  sireId: integer('sire_id').references(() => animals.id, { onDelete: 'set null' }),
+  sireName: text('sire_name'),
+  ease: text('ease'), // unassisted|easy_pull|hard_pull|vet|caesarean
+  outcome: text('outcome').notNull().default('alive'), // alive|stillborn|died
+  birthWeightKg: real('birth_weight_kg'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_birth_farm').on(t.farmId, t.date),
+  dam: index('idx_birth_dam').on(t.damId),
+}));
+
+export const movements = sqliteTable('movements', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  animalId: integer('animal_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  fromParcelId: integer('from_parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  toParcelId: integer('to_parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  toStructureId: integer('to_structure_id').references(() => structures.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+}, (t) => ({
+  animal: index('idx_movement_animal').on(t.animalId, t.date),
+  farm: index('idx_movement_farm').on(t.farmId),
+}));
+
+// ==================== EQUIPMENT ====================
+
+export const equipment = sqliteTable('equipment', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  category: text('category').notNull().default('tractor'), // tractor|vehicle|trailer|implement|atv|handling|tool|other
   make: text('make'),
   model: text('model'),
   year: integer('year'),
+  registration: text('registration'),
+  serialNumber: text('serial_number'),
   purchaseDate: text('purchase_date'),
   purchasePrice: real('purchase_price'),
-  serialNumber: text('serial_number'),
-  status: text('status').default('active'), // active|sold|scrapped
-  soldDate: text('sold_date'),
-  salePrice: real('sale_price'),
+  status: text('status').notNull().default('active'), // active|needs_attention|in_repair|retired|sold
+  hours: real('hours'),
+  serviceIntervalHours: real('service_interval_hours'),
+  serviceIntervalMonths: integer('service_interval_months'),
+  lastServiceDate: text('last_service_date'),
+  lastServiceHours: real('last_service_hours'),
+  motDue: text('mot_due'),
+  insuranceDue: text('insurance_due'),
   notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_machinery_farm').on(table.farmId),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_equipment_farm').on(t.farmId),
 }));
 
-// ==================== MACHINERY EVENTS TABLE ====================
-
-export const machineryEvents = sqliteTable('machinery_events', {
+export const equipmentLogs = sqliteTable('equipment_logs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  machineryId: integer('machinery_id').notNull().references(() => machinery.id, { onDelete: 'cascade' }),
-  fieldId: integer('field_id').references(() => fields.id, { onDelete: 'set null' }),
-  type: text('type').notNull(), // fuel|repair|service|other
+  equipmentId: integer('equipment_id').notNull().references(() => equipment.id, { onDelete: 'cascade' }),
   date: text('date').notNull(),
+  type: text('type').notNull(), // service|repair|inspection|fuel|hours|note
+  hours: real('hours'),
   cost: real('cost'),
   description: text('description'),
-  hoursOrMileage: real('hours_or_mileage'),
-  notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_machinery_events_farm').on(table.farmId),
-  machineryIdx: index('idx_machinery_events_machinery').on(table.machineryId),
-  fieldIdx: index('idx_machinery_events_field').on(table.fieldId),
+  performedBy: text('performed_by'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+}, (t) => ({
+  equipment: index('idx_eqlog_equipment').on(t.equipmentId, t.date),
+  farm: index('idx_eqlog_farm').on(t.farmId),
 }));
 
-// ==================== WORKERS TABLE ====================
+// ==================== PEOPLE & WORK ====================
 
-export const workers = sqliteTable('workers', {
+export const staff = sqliteTable('staff', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
-  role: text('role'),
+  email: text('email'),
+  phone: text('phone'),
+  jobTitle: text('job_title'),
+  employmentType: text('employment_type').notNull().default('full_time'), // full_time|part_time|seasonal|contractor
+  payRate: real('pay_rate'),
+  payUnit: text('pay_unit'), // hour|day|week|month|year
   startDate: text('start_date'),
-  endDate: text('end_date'), // null = currently employed
+  endDate: text('end_date'),
+  emergencyContact: text('emergency_contact'),
   notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_workers_farm').on(table.farmId),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_staff_farm').on(t.farmId),
 }));
 
-// ==================== PAYROLL EVENTS TABLE ====================
-
-export const payrollEvents = sqliteTable('payroll_events', {
+export const tasks = sqliteTable('tasks', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  workerId: integer('worker_id').notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  date: text('date').notNull(),
-  amount: real('amount').notNull(),
-  type: text('type').notNull(), // salary|bonus|overtime|other
-  periodStart: text('period_start'),
-  periodEnd: text('period_end'),
-  notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_payroll_farm').on(table.farmId),
-  workerIdx: index('idx_payroll_worker').on(table.workerId),
+  title: text('title').notNull(),
+  description: text('description'),
+  dueDate: text('due_date'),
+  priority: text('priority').notNull().default('normal'), // low|normal|high
+  status: text('status').notNull().default('todo'), // todo|in_progress|done
+  category: text('category'), // livestock|land|equipment|admin|other
+  assigneeUserId: integer('assignee_user_id').references(() => users.id, { onDelete: 'set null' }),
+  animalId: integer('animal_id').references(() => animals.id, { onDelete: 'set null' }),
+  equipmentId: integer('equipment_id').references(() => equipment.id, { onDelete: 'set null' }),
+  parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  completedAt: text('completed_at'),
+  completedBy: integer('completed_by'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_task_farm').on(t.farmId, t.status, t.dueDate),
 }));
 
-// ==================== SUPPLY PURCHASES TABLE ====================
-
-export const supplyPurchases = sqliteTable('supply_purchases', {
+export const inventoryItems = sqliteTable('inventory_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  fieldId: integer('field_id').references(() => fields.id, { onDelete: 'set null' }),
-  category: text('category').notNull(), // fertiliser|seed|medicine|vaccine|fuel|other
   name: text('name').notNull(),
-  date: text('date').notNull(),
-  quantity: real('quantity'),
-  unit: text('unit'), // kg|L|units|bags|tonnes
+  category: text('category').notNull().default('feed'), // feed|medicine|vaccine|fertiliser|seed|fuel|bedding|parts|other
+  quantity: real('quantity').notNull().default(0),
+  unit: text('unit').notNull().default('units'),
+  reorderLevel: real('reorder_level'),
   unitCost: real('unit_cost'),
-  totalCost: real('total_cost').notNull(),
   supplier: text('supplier'),
+  location: text('location'),
+  batchNo: text('batch_no'),
+  expiryDate: text('expiry_date'),
   notes: text('notes'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_supplies_farm').on(table.farmId),
-  fieldIdx: index('idx_supplies_field').on(table.fieldId),
-  categoryIdx: index('idx_supplies_category').on(table.category),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farm: index('idx_inventory_farm').on(t.farmId),
 }));
 
-// ==================== COST ALLOCATIONS TABLE ====================
+// ==================== MONEY ====================
 
-export const costAllocations = sqliteTable('cost_allocations', {
+export const transactions = sqliteTable('transactions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  sourceType: text('source_type').notNull(), // 'supply' | 'machinery' | 'payroll' | 'direct'
-  sourceId: integer('source_id'), // FK to source table, null for direct costs
-  cattleId: integer('cattle_id').notNull().references(() => cattle.id, { onDelete: 'cascade' }),
-  amount: real('amount').notNull(),
+  type: text('type').notNull(), // income|expense
+  category: text('category').notNull(),
+  amount: real('amount').notNull(), // always positive
+  vatAmount: real('vat_amount'),
   date: text('date').notNull(),
   description: text('description'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_cost_alloc_farm').on(table.farmId),
-  cattleIdx: index('idx_cost_alloc_cattle').on(table.cattleId),
-  sourceIdx: index('idx_cost_alloc_source').on(table.sourceType, table.sourceId),
+  counterparty: text('counterparty'),
+  reference: text('reference'),
+  animalId: integer('animal_id').references(() => animals.id, { onDelete: 'set null' }),
+  equipmentId: integer('equipment_id').references(() => equipment.id, { onDelete: 'set null' }),
+  parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
+  staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
+  // Auto-created transactions point back at the record that generated them
+  source: text('source'), // animal_sale|animal_purchase|health|equipment_log|null
+  sourceId: integer('source_id'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farmDate: index('idx_txn_farm_date').on(t.farmId, t.date),
+  source: index('idx_txn_source').on(t.farmId, t.source, t.sourceId),
+  animal: index('idx_txn_animal').on(t.animalId),
 }));
 
-// ==================== ALLOCATION GROUPS TABLE ====================
+// ==================== AUDIT ====================
 
-export const allocationGroups = sqliteTable('allocation_groups', {
+export const activityLog = sqliteTable('activity_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  sourceType: text('source_type').notNull(),
-  sourceId: integer('source_id'),
-  groupType: text('group_type').notNull(), // 'all_herd' | 'cows' | 'calves' | 'field' | 'custom'
-  groupTarget: integer('group_target'), // field ID if by field, null otherwise
-  animalCount: integer('animal_count').notNull(),
-  totalAmount: real('total_amount').notNull(),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  farmIdx: index('idx_alloc_group_farm').on(table.farmId),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(), // created|updated|deleted|...
+  entity: text('entity').notNull(),
+  entityId: integer('entity_id'),
+  summary: text('summary').notNull(),
+  createdAt: createdAt(),
+}, (t) => ({
+  farm: index('idx_activity_farm').on(t.farmId, t.createdAt),
 }));
-
-// ==================== RELATIONS ====================
-
-export const usersRelations = relations(users, ({ many }) => ({
-  farmMemberships: many(farmMembers),
-}));
-
-export const farmsRelations = relations(farms, ({ many }) => ({
-  members: many(farmMembers),
-  invites: many(farmInvites),
-  cattle: many(cattle),
-}));
-
-export const farmMembersRelations = relations(farmMembers, ({ one }) => ({
-  farm: one(farms, { fields: [farmMembers.farmId], references: [farms.id] }),
-  user: one(users, { fields: [farmMembers.userId], references: [users.id] }),
-}));
-
-export const farmInvitesRelations = relations(farmInvites, ({ one }) => ({
-  farm: one(farms, { fields: [farmInvites.farmId], references: [farms.id] }),
-  createdByUser: one(users, { fields: [farmInvites.createdBy], references: [users.id] }),
-}));
-
-export const cattleRelations = relations(cattle, ({ one, many }) => ({
-  // Farm ownership
-  farm: one(farms, { fields: [cattle.farmId], references: [farms.id] }),
-
-  // Self-referencing maternal relationship
-  dam: one(cattle, {
-    fields: [cattle.damTag],
-    references: [cattle.id],
-    relationName: 'maternal',
-  }),
-  offspring: many(cattle, {
-    relationName: 'maternal',
-  }),
-
-  // Event relationships
-  calvings: many(calvingEvents, {
-    relationName: 'motherCalvings',
-  }),
-  services: many(serviceEvents),
-  sale: one(saleEvents),
-  healthEvents: many(healthEvents),
-  fieldAssignments: many(fieldAssignments),
-  costAllocations: many(costAllocations),
-}));
-
-export const calvingEventsRelations = relations(calvingEvents, ({ one, many }) => ({
-  farm: one(farms, { fields: [calvingEvents.farmId], references: [farms.id] }),
-  mother: one(cattle, {
-    fields: [calvingEvents.motherId],
-    references: [cattle.id],
-    relationName: 'motherCalvings',
-  }),
-  calf: one(cattle, {
-    fields: [calvingEvents.calfId],
-    references: [cattle.id],
-  }),
-  services: many(serviceEvents),
-}));
-
-export const serviceEventsRelations = relations(serviceEvents, ({ one }) => ({
-  farm: one(farms, { fields: [serviceEvents.farmId], references: [farms.id] }),
-  cow: one(cattle, {
-    fields: [serviceEvents.cowId],
-    references: [cattle.id],
-  }),
-  calvingEvent: one(calvingEvents, {
-    fields: [serviceEvents.calvingEventId],
-    references: [calvingEvents.id],
-  }),
-}));
-
-export const saleEventsRelations = relations(saleEvents, ({ one }) => ({
-  farm: one(farms, { fields: [saleEvents.farmId], references: [farms.id] }),
-  animal: one(cattle, {
-    fields: [saleEvents.animalId],
-    references: [cattle.id],
-  }),
-}));
-
-export const healthEventsRelations = relations(healthEvents, ({ one }) => ({
-  farm: one(farms, { fields: [healthEvents.farmId], references: [farms.id] }),
-  animal: one(cattle, {
-    fields: [healthEvents.animalId],
-    references: [cattle.id],
-  }),
-}));
-
-export const fieldsRelations = relations(fields, ({ one, many }) => ({
-  farm: one(farms, { fields: [fields.farmId], references: [farms.id] }),
-  assignments: many(fieldAssignments),
-}));
-
-export const fieldAssignmentsRelations = relations(fieldAssignments, ({ one }) => ({
-  farm: one(farms, { fields: [fieldAssignments.farmId], references: [farms.id] }),
-  cattle: one(cattle, { fields: [fieldAssignments.cattleId], references: [cattle.id] }),
-  field: one(fields, { fields: [fieldAssignments.fieldId], references: [fields.id] }),
-}));
-
-export const machineryRelations = relations(machinery, ({ one, many }) => ({
-  farm: one(farms, { fields: [machinery.farmId], references: [farms.id] }),
-  events: many(machineryEvents),
-}));
-
-export const machineryEventsRelations = relations(machineryEvents, ({ one }) => ({
-  farm: one(farms, { fields: [machineryEvents.farmId], references: [farms.id] }),
-  machine: one(machinery, { fields: [machineryEvents.machineryId], references: [machinery.id] }),
-  field: one(fields, { fields: [machineryEvents.fieldId], references: [fields.id] }),
-}));
-
-export const workersRelations = relations(workers, ({ one, many }) => ({
-  farm: one(farms, { fields: [workers.farmId], references: [farms.id] }),
-  payroll: many(payrollEvents),
-}));
-
-export const payrollEventsRelations = relations(payrollEvents, ({ one }) => ({
-  farm: one(farms, { fields: [payrollEvents.farmId], references: [farms.id] }),
-  worker: one(workers, { fields: [payrollEvents.workerId], references: [workers.id] }),
-}));
-
-export const supplyPurchasesRelations = relations(supplyPurchases, ({ one }) => ({
-  farm: one(farms, { fields: [supplyPurchases.farmId], references: [farms.id] }),
-  field: one(fields, { fields: [supplyPurchases.fieldId], references: [fields.id] }),
-}));
-
-export const costAllocationsRelations = relations(costAllocations, ({ one }) => ({
-  farm: one(farms, { fields: [costAllocations.farmId], references: [farms.id] }),
-  animal: one(cattle, { fields: [costAllocations.cattleId], references: [cattle.id] }),
-}));
-
-export const allocationGroupsRelations = relations(allocationGroups, ({ one }) => ({
-  farm: one(farms, { fields: [allocationGroups.farmId], references: [farms.id] }),
-}));
-
-// ==================== TYPE EXPORTS ====================
-
-export type Cattle = typeof cattle.$inferSelect;
-export type NewCattle = typeof cattle.$inferInsert;
-
-export type CalvingEvent = typeof calvingEvents.$inferSelect;
-export type NewCalvingEvent = typeof calvingEvents.$inferInsert;
-
-export type ServiceEvent = typeof serviceEvents.$inferSelect;
-export type NewServiceEvent = typeof serviceEvents.$inferInsert;
-
-export type SaleEvent = typeof saleEvents.$inferSelect;
-export type NewSaleEvent = typeof saleEvents.$inferInsert;
-
-export type HealthEvent = typeof healthEvents.$inferSelect;
-export type NewHealthEvent = typeof healthEvents.$inferInsert;
-
-export type Field = typeof fields.$inferSelect;
-export type NewField = typeof fields.$inferInsert;
-
-export type FieldAssignment = typeof fieldAssignments.$inferSelect;
-export type NewFieldAssignment = typeof fieldAssignments.$inferInsert;
 
 export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-
 export type Farm = typeof farms.$inferSelect;
-export type NewFarm = typeof farms.$inferInsert;
-
-export type Machinery = typeof machinery.$inferSelect;
-export type NewMachinery = typeof machinery.$inferInsert;
-
-export type MachineryEvent = typeof machineryEvents.$inferSelect;
-export type NewMachineryEvent = typeof machineryEvents.$inferInsert;
-
-export type Worker = typeof workers.$inferSelect;
-export type NewWorker = typeof workers.$inferInsert;
-
-export type PayrollEvent = typeof payrollEvents.$inferSelect;
-export type NewPayrollEvent = typeof payrollEvents.$inferInsert;
-
-export type SupplyPurchase = typeof supplyPurchases.$inferSelect;
-export type NewSupplyPurchase = typeof supplyPurchases.$inferInsert;
-
-export type FarmMember = typeof farmMembers.$inferSelect;
-export type NewFarmMember = typeof farmMembers.$inferInsert;
-
-export type FarmInvite = typeof farmInvites.$inferSelect;
-export type NewFarmInvite = typeof farmInvites.$inferInsert;
-
-export type CostAllocation = typeof costAllocations.$inferSelect;
-export type NewCostAllocation = typeof costAllocations.$inferInsert;
-
-export type AllocationGroup = typeof allocationGroups.$inferSelect;
-export type NewAllocationGroup = typeof allocationGroups.$inferInsert;
+export type Animal = typeof animals.$inferSelect;
+export type Equipment = typeof equipment.$inferSelect;

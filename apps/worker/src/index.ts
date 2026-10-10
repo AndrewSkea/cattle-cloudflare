@@ -1,127 +1,83 @@
 /**
- * Cattle Management API - Cloudflare Worker with Hono
+ * Farm management — Cloudflare Worker.
  *
- * Main entry point for the serverless backend API
+ * Serves the static Next.js app (Workers Static Assets) and the JSON API under /api from one
+ * origin, so the session cookie is first-party and no CORS is needed in production.
  */
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { getDrizzleClient } from './db/client';
-import { authMiddleware } from './middleware/auth';
-import type { Env, AuthUser } from './types';
+import { authMiddleware } from './lib/auth';
+import { type AppEnv, HttpError } from './lib/context';
 
-// Import routes
 import authRoutes from './routes/auth';
-import farmRoutes from './routes/farms';
-import inviteRoutes from './routes/invite';
-import cattleRoutes from './routes/cattle';
-import familyRoutes from './routes/family';
-import uploadRoutes from './routes/upload';
-import calvingRoutes from './routes/calvings';
-import saleRoutes from './routes/sales';
-import healthRoutes from './routes/health';
-import analyticsRoutes from './routes/analytics';
-import breedingRoutes from './routes/breeding';
-import fieldsRoutes from './routes/fields';
-import machineryRoutes from './routes/machinery';
-import workersRoutes from './routes/workers';
-import suppliesRoutes from './routes/supplies';
-import costsRoutes from './routes/costs';
-import exportRoutes from './routes/export';
+import farmRoutes, { farmsCreate, invitesPublic } from './routes/farm';
+import animalRoutes from './routes/animals';
+import { births, breeding, health, movements, weights } from './routes/records';
+import { equipment, inventory, parcels, staffRoutes, structures, tasks } from './routes/resources';
+import financeRoutes from './routes/finance';
+import dashboardRoutes from './routes/dashboard';
 
-const app = new Hono<{ Bindings: Env; Variables: { db: ReturnType<typeof getDrizzleClient>; user: AuthUser } }>();
+const app = new Hono<AppEnv>();
 
-// ==================== MIDDLEWARE ====================
+// Local development only: allow the Next.js dev server on another port.
+app.use('/api/*', async (c, next) => {
+  if (c.env.ENVIRONMENT === 'production') return next();
+  return cors({ origin: (o) => (o && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) ? o : null), credentials: true })(c, next);
+});
 
-// Logging middleware
-app.use('*', logger());
-
-// CORS middleware - allow all Cloudflare Pages deployments
-app.use('*', cors({
-  origin: (origin) => {
-    // Allow localhost for development
-    if (origin?.includes('localhost')) return origin;
-    // Allow all cattle-management.pages.dev deployments
-    if (origin?.includes('cattle-management.pages.dev')) return origin;
-    // Fallback
-    return origin || '*';
-  },
-  credentials: true,
-}));
-
-// Attach database client to context
-app.use('*', async (c, next) => {
-  const db = getDrizzleClient(c.env.DB);
-  c.set('db', db);
+// CSRF: state-changing requests must come from our own origin (cookie is also SameSite=Lax).
+app.use('/api/*', async (c, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+    const origin = c.req.header('Origin');
+    const self = new URL(c.req.url).origin;
+    const devOk = c.env.ENVIRONMENT !== 'production' && origin && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+    if (origin && origin !== self && !devOk) return c.json({ error: 'Cross-site request blocked' }, 403);
+  }
   await next();
 });
 
-// Auth middleware for protected API routes (excludes /api/auth/* and GET /api/invite/:code)
-app.use('/api/cattle/*', authMiddleware);
-app.use('/api/family/*', authMiddleware);
-app.use('/api/upload/*', authMiddleware);
-app.use('/api/calvings/*', authMiddleware);
-app.use('/api/sales/*', authMiddleware);
-app.use('/api/health/*', authMiddleware);
-app.use('/api/analytics/*', authMiddleware);
-app.use('/api/breeding/*', authMiddleware);
-app.use('/api/fields/*', authMiddleware);
-app.use('/api/machinery/*', authMiddleware);
-app.use('/api/workers/*', authMiddleware);
-app.use('/api/supplies/*', authMiddleware);
-app.use('/api/costs/*', authMiddleware);
-app.use('/api/export/*', authMiddleware);
-
-// ==================== ROUTES ====================
-
-// Health check
-app.get('/', (c) => {
-  return c.json({
-    status: 'ok',
-    message: 'Cattle Management API',
-    environment: c.env.ENVIRONMENT,
-    timestamp: new Date().toISOString(),
-  });
+app.use('/api/*', async (c, next) => {
+  c.set('db', getDrizzleClient(c.env.DB));
+  await next();
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
 });
 
-// Auth routes (public - handles own auth internally)
+// Public
+app.get('/api/health-check', (c) => c.json({ status: 'ok', environment: c.env.ENVIRONMENT, time: new Date().toISOString() }));
 app.route('/api/auth', authRoutes);
+app.route('/api/invites', invitesPublic);
 
-// Farm management routes (auth handled internally)
-app.route('/api/farms', farmRoutes);
+// Everything below requires a session
+app.use('/api/*', authMiddleware);
+app.route('/api/farms', farmsCreate);
+app.route('/api/farm', farmRoutes);
+app.route('/api/dashboard', dashboardRoutes);
+app.route('/api/animals', animalRoutes);
+app.route('/api/health', health);
+app.route('/api/weights', weights);
+app.route('/api/breeding', breeding);
+app.route('/api/births', births);
+app.route('/api/movements', movements);
+app.route('/api/land', parcels);
+app.route('/api/structures', structures);
+app.route('/api/equipment', equipment);
+app.route('/api/staff', staffRoutes);
+app.route('/api/tasks', tasks);
+app.route('/api/inventory', inventory);
+app.route('/api/finance', financeRoutes);
 
-// Invite routes (GET is public, POST /accept requires auth - handled internally)
-app.route('/api/invite', inviteRoutes);
+app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
-// Data routes (protected by auth middleware above)
-app.route('/api/cattle', cattleRoutes);
-app.route('/api/family', familyRoutes);
-app.route('/api/upload', uploadRoutes);
-app.route('/api/calvings', calvingRoutes);
-app.route('/api/sales', saleRoutes);
-app.route('/api/health', healthRoutes);
-app.route('/api/analytics', analyticsRoutes);
-app.route('/api/breeding', breedingRoutes);
-app.route('/api/fields', fieldsRoutes);
-app.route('/api/machinery', machineryRoutes);
-app.route('/api/workers', workersRoutes);
-app.route('/api/supplies', suppliesRoutes);
-app.route('/api/costs', costsRoutes);
-app.route('/api/export', exportRoutes);
+// Non-API paths fall through to the static app.
+app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
-// 404 handler
-app.notFound((c) => {
-  return c.json({ error: 'Not Found' }, 404);
-});
-
-// Error handler
 app.onError((err, c) => {
-  console.error('Error:', err);
-  return c.json({
-    error: 'Internal Server Error',
-    message: err.message,
-  }, 500);
+  if (err instanceof HttpError) return c.json({ error: err.message, details: err.details }, err.status);
+  console.error(`${c.req.method} ${c.req.path}`, err);
+  return c.json({ error: 'Something went wrong. Please try again.' }, 500);
 });
 
 export default app;
