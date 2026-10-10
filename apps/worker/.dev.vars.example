@@ -3,3 +3,6 @@ DEV_AUTH_ENABLED=true
 JWT_SECRET=local-development-secret-change-me
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Local fake ScotEID (served by the worker itself; username anything, password "demo-password")
+SCOTEID_APP_KEY=local-dev-key
+SCOTEID_ENDPOINT=http://localhost:8787/api/dev/scoteid

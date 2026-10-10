@@ -15,6 +15,8 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   DEV_AUTH_ENABLED?: string; // local .dev.vars only — never set in production
+  SCOTEID_APP_KEY?: string; // vendor key issued by ScotEID; the integration is dormant without it
+  SCOTEID_ENDPOINT?: string; // defaults to https://api.scoteid.com/api/ (test: https://api.test.scoteid.com/api)
 }
 
 export type Role = 'viewer' | 'worker' | 'manager' | 'owner';
