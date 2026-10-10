@@ -2,28 +2,18 @@
   "name": "cattle-cloudflare",
   "version": "1.0.0",
   "private": true,
-  "description": "Modern cattle management system built on Cloudflare",
+  "description": "Steading \u2014 farm management on Cloudflare Workers",
   "scripts": {
-    "dev:worker": "pnpm --filter worker dev",
-    "dev:web": "pnpm --filter web dev",
-    "dev": "pnpm run dev:worker & pnpm run dev:web",
-    "build:worker": "pnpm --filter worker build",
-    "build:web": "pnpm --filter web build",
-    "build": "pnpm run build:worker && pnpm run build:web",
-    "deploy:worker": "pnpm --filter worker deploy",
-    "deploy:web": "pnpm --filter web deploy",
-    "migrate:export": "tsx scripts/migrate-data.ts",
-    "migrate:import": "tsx scripts/seed-d1.ts",
-    "migrate:validate": "tsx scripts/validate-migration.ts"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.8.1"
+    "dev": "pnpm --filter web build && pnpm --filter worker dev",
+    "build": "pnpm --filter web build && pnpm --filter worker build",
+    "typecheck": "pnpm --filter worker typecheck && cd apps/web && tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:prod": "playwright test --config=playwright.prod.config.ts",
+    "deploy": "pnpm --filter web build && pnpm --filter worker db:migrate && pnpm --filter worker deploy"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "@types/better-sqlite3": "^7.6.12",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@9.15.9"
 }

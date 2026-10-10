@@ -34,3 +34,9 @@ cattle-backup-*.db
 # Temporary files
 *.tmp
 .cache
+
+# Static export (built in CI / before deploy) and test output
+apps/web/out
+test-results
+playwright-report
+*.tsbuildinfo
