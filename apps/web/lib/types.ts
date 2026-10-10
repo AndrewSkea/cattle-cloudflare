@@ -5,6 +5,7 @@ export interface Farm {
   id: number
   name: string
   holdingNumber: string | null
+  herdMark: string | null
   address: string | null
   latitude: number | null
   longitude: number | null
@@ -379,4 +380,47 @@ export interface FamilyReport {
   offspring: FamilyStats
   descendantStats: FamilyStats
   herd: FamilyStats
+}
+
+export interface MartMatch {
+  id: number
+  status: 'new' | 'imported' | 'dismissed'
+  decidedAt: string | null
+  lotId: number
+  date: string
+  section: string
+  category: string
+  species: 'cattle' | 'sheep'
+  basis: 'kg' | 'head'
+  seller: string
+  weightKg: number | null
+  price: number
+  pricePerKg: number | null
+  ppkDerived: boolean
+  breedCode: string | null
+  breed: string | null
+  headCount: number
+  buyer: string | null
+  top: boolean
+  raw: string
+  reportId: number
+  reportTitle: string
+  reportUrl: string
+  marketPpk: number | null
+  marketLabel: string | null
+  animals: { id: number; tagNo: string; managementTag: string | null }[]
+}
+
+export interface MartCandidate {
+  id: number; tagNo: string; managementTag: string | null; name: string | null; sex: string; castrated: boolean
+  breed: string | null; dob: string | null; status: string; ageMonths: number | null; lastWeightKg: number | null
+  score: number; reasons: string[]
+}
+
+export interface MartOverview {
+  sellers: string[]
+  lastSyncAt: string | null
+  counts: { new: number; imported: number; dismissed: number }
+  reports: number
+  latestReport: string | null
 }

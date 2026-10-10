@@ -5,6 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 routes = [{ pattern = "hooveswho.andrewskea.com", custom_domain = true }]
 
+# Orkney Mart sales reports are checked every 3 hours.
+[triggers]
+crons = ["17 */3 * * *"]
+
 [observability]
 enabled = true
 

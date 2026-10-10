@@ -59,7 +59,8 @@ export default function SettingsPage() {
             <div className="space-y-5 p-5">
               <FormGrid>
                 <TextField label="Farm name" name="name" required defaultValue={farm.name} maxLength={100} />
-                <TextField label="Holding number (CPH)" name="holdingNumber" defaultValue={farm.holdingNumber ?? ''} />
+                <TextField label="Holding number (CPH)" name="holdingNumber" defaultValue={farm.holdingNumber ?? ''} placeholder="85/123/4567" />
+                <TextField label="Herd mark" name="herdMark" defaultValue={farm.herdMark ?? ''} placeholder="523801" inputMode="numeric" maxLength={6} hint="The 6 digits after “UK” on calves born here" />
                 <SelectField label="Currency" name="currency" defaultValue={farm.currency} options={['GBP', 'EUR', 'USD', 'AUD', 'NZD', 'CAD'].map((c) => ({ value: c, label: c }))} />
                 <SelectField label="Land area unit" name="areaUnit" defaultValue={farm.areaUnit} options={[{ value: 'ha', label: 'Hectares' }, { value: 'ac', label: 'Acres' }]} />
               </FormGrid>

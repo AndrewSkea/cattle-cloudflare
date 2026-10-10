@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getDrizzleClient } from './db/client';
 import { authMiddleware } from './lib/auth';
-import { type AppEnv, HttpError } from './lib/context';
+import { type AppEnv, type Env, HttpError } from './lib/context';
 
 import authRoutes from './routes/auth';
 import farmRoutes, { farmsCreate, invitesPublic } from './routes/farm';
@@ -18,6 +18,9 @@ import { births, breeding, health, movements, weights } from './routes/records';
 import { equipment, inventory, parcels, staffRoutes, structures, tasks } from './routes/resources';
 import financeRoutes from './routes/finance';
 import dashboardRoutes from './routes/dashboard';
+import martRoutes from './routes/mart';
+import { compliance, scoteid, scoteidMock } from './routes/compliance';
+import { syncOrkneyMart } from './services/mart/orkney';
 
 const app = new Hono<AppEnv>();
 
@@ -49,6 +52,7 @@ app.use('/api/*', async (c, next) => {
 app.get('/api/health-check', (c) => c.json({ status: 'ok', environment: c.env.ENVIRONMENT, time: new Date().toISOString() }));
 app.route('/api/auth', authRoutes);
 app.route('/api/invites', invitesPublic);
+app.route('/api/dev/scoteid', scoteidMock); // 404 in production
 
 // Everything below requires a session
 app.use('/api/*', authMiddleware);
@@ -68,6 +72,9 @@ app.route('/api/staff', staffRoutes);
 app.route('/api/tasks', tasks);
 app.route('/api/inventory', inventory);
 app.route('/api/finance', financeRoutes);
+app.route('/api/mart', martRoutes);
+app.route('/api/compliance', compliance);
+app.route('/api/scoteid', scoteid);
 
 app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
@@ -80,4 +87,13 @@ app.onError((err, c) => {
   return c.json({ error: 'Something went wrong. Please try again.' }, 500);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  /** Cron: pick up new Orkney Mart sales reports and match them to farms. */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(syncOrkneyMart(getDrizzleClient(env.DB), { days: 21 }).then(
+      (r) => console.log('mart sync', JSON.stringify(r)),
+      (e) => console.error('mart sync failed', e),
+    ));
+  },
+} satisfies ExportedHandler<Env>;

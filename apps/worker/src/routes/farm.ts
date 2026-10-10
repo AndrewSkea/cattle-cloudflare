@@ -16,6 +16,7 @@ import { acceptInvite, findUsableInvite } from '../lib/invites';
 const farmFields = z.object({
   name: z.string().trim().min(1, 'is required').max(100),
   holdingNumber: optText(50),
+  herdMark: z.string().trim().regex(/^\d{6}$/, 'is the 6-digit number on your ear tags after "UK"').nullish().or(z.literal('').transform(() => null)),
   address: optText(300),
   latitude: z.number().min(-90).max(90).nullish(),
   longitude: z.number().min(-180).max(180).nullish(),

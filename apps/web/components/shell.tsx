@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  BarChart3, Boxes, CalendarDays, Check, ChevronsUpDown, ClipboardList, GitBranch, HeartPulse, LayoutDashboard, LogOut,
+  BarChart3, Boxes, CalendarDays, Check, ChevronsUpDown, ClipboardList, Gavel, GitBranch, HeartPulse, Landmark, LayoutDashboard, LogOut,
   Map as MapIcon, Menu as MenuIcon, PawPrint, Plus, Search, Settings, Sprout, Tractor, User, Users, Wallet, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -29,6 +29,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     { href: '/breeding', label: 'Breeding', icon: Sprout },
     { href: '/health', label: 'Health', icon: HeartPulse },
     { href: '/families', label: 'Families', icon: GitBranch },
+    { href: '/traceability', label: 'Traceability', icon: Landmark },
   ] },
   { section: 'Farm', items: [
     { href: '/land', label: 'Land & map', icon: MapIcon },
@@ -36,6 +37,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     { href: '/inventory', label: 'Inventory', icon: Boxes },
   ] },
   { section: 'Business', items: [
+    { href: '/mart', label: 'Mart sales', icon: Gavel },
     { href: '/finance', label: 'Finances', icon: Wallet, min: 'manager' },
     { href: '/reports', label: 'Reports', icon: BarChart3 },
     { href: '/team', label: 'Team', icon: Users },

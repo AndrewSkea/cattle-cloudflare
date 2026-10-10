@@ -3,11 +3,12 @@
  */
 
 import { Hono } from 'hono';
-import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { type AppEnv, addDays, farmSession, requireRole, roleAtLeast, today } from '../lib/context';
 import { ageMonths, classify, loadFarmGraph } from '../services/livestock';
 import { serviceStatus } from './resources';
+import { complianceSummary } from '../services/compliance';
 
 const dashboard = new Hono<AppEnv>();
 dashboard.use('*', requireRole('viewer'));
@@ -91,6 +92,9 @@ dashboard.get('/', async (c) => {
     money = { income: inc, expense: exp, net: inc - exp };
   }
 
+  const martNew = (await db.get<{ n: number }>(sql`SELECT COUNT(*) n FROM mart_matches WHERE farm_id = ${s.farmId} AND status = 'new'`))?.n ?? 0;
+  const compliance = await complianceSummary(db, s.farmId);
+
   return c.json({
     data: {
       herd,
@@ -105,7 +109,7 @@ dashboard.get('/', async (c) => {
         fields: parcels.length,
         equipment: equipment.filter((e) => e.status !== 'sold' && e.status !== 'retired').length,
       },
-      alerts: { healthDue, withdrawals, dueBirths, equipment: equipmentAlerts, stock: stockAlerts },
+      alerts: { healthDue, withdrawals, dueBirths, equipment: equipmentAlerts, stock: stockAlerts, martNew, compliance },
       tasks: { open: openTasks.length, overdue: openTasks.filter((x) => x.overdue).length, mine: openTasks.filter((x) => x.assigneeUserId === s.userId).slice(0, 8), upcoming: openTasks.slice(0, 8) },
       money,
       activity,

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle, Baby, Boxes, CheckCircle2, ChevronRight, CircleDot, ClipboardList, HeartPulse, Landmark, PawPrint, Plus,
-  ShieldAlert, Sprout, Tractor, TrendingUp, Wallet,
+  Gavel, ShieldAlert, Sprout, Tag, Tractor, TrendingUp, Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardHeader, EmptyState, PageHeader, PageSkeleton, StatCard } from '@/components/ui/display'
@@ -30,6 +30,8 @@ interface Dashboard {
     dueBirths: { id: number; animalId: number; animalTag: string; date: string; overdue: boolean }[]
     equipment: { id: number; name: string; serviceState: string; serviceReasons: string[] }[]
     stock: { id: number; name: string; quantity: number; unit: string; reason: string }[]
+    martNew: number
+    compliance: { overdue: number; dueSoon: number; tagIssues: number }
   }
   tasks: { open: number; overdue: number; mine: Task[]; upcoming: Task[] }
   money: { income: number; expense: number; net: number } | null
@@ -54,6 +56,10 @@ export default function DashboardPage() {
   const overdueBirths = alerts.dueBirths.filter((b) => b.overdue)
 
   const attention = [
+    ...(alerts.compliance.overdue ? [{ key: 'cmp', icon: Landmark, tone: 'red' as const, text: `${alerts.compliance.overdue} ScotEID report${alerts.compliance.overdue === 1 ? '' : 's'} overdue`, meta: 'Births, deaths or movements past their deadline', href: '/traceability' }] : []),
+    ...(alerts.compliance.dueSoon ? [{ key: 'cmp2', icon: Landmark, tone: 'amber' as const, text: `${alerts.compliance.dueSoon} ScotEID report${alerts.compliance.dueSoon === 1 ? '' : 's'} due within 3 days`, meta: 'Births, deaths or movements', href: '/traceability' }] : []),
+    ...(alerts.martNew ? [{ key: 'mart', icon: Gavel, tone: 'amber' as const, text: `${alerts.martNew} mart sale${alerts.martNew === 1 ? '' : 's'} to review`, meta: 'Found in Orkney Mart reports — import them as sales', href: '/mart' }] : []),
+    ...(alerts.compliance.tagIssues ? [{ key: 'tags', icon: Tag, tone: 'amber' as const, text: `${alerts.compliance.tagIssues} ear tag number${alerts.compliance.tagIssues === 1 ? '' : 's'} look wrong`, meta: 'Failed the UK check-digit test', href: '/traceability?tab=tags' }] : []),
     ...alerts.healthDue.filter((h) => h.overdue).map((h) => ({ key: `h${h.id}`, icon: HeartPulse, tone: 'red' as const, text: `${h.title}: ${h.animalTag}`, meta: `overdue ${fmtDue(h.date)}`, href: `/livestock/view?id=${h.animalId}&tab=health` })),
     ...(overdueBirths.length > 3
       ? [{ key: 'births', icon: Baby, tone: 'amber' as const, text: `${overdueBirths.length} pregnancies past their due date`, meta: 'Record the births, or mark them not in calf', href: '/breeding' }]

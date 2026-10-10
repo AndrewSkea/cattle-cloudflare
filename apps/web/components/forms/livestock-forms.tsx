@@ -388,6 +388,8 @@ export function ExitSheet({ open, onClose, animal }: { open: boolean; onClose: (
           {isSale && <TextField label="Buyer / market" name="buyer" />}
           {isSale && <TextField label="Price" name="salePrice" type="number" step="0.01" min={0} prefix={currency === 'GBP' ? '£' : undefined} hint="Added to income as Livestock sales" />}
           {isSale && <TextField label="Weight" name="saleWeightKg" type="number" step="0.1" min={0} suffix="kg" />}
+          {(isSale || status === 'died') && <TextField label="Carcase weight" name="carcaseWeightKg" type="number" step="0.1" min={0} suffix="kg" hint="Deadweight, from the abattoir" />}
+          {(isSale || status === 'died') && <TextField label="Carcase grade" name="carcaseGrade" placeholder="e.g. R4L" maxLength={10} hint="EUROP conformation + fat class" />}
         </FormGrid>
         <TextareaField label={status === 'died' ? 'Cause of death' : 'Reason / notes'} name="exitReason" rows={3} />
         <FormError error={error} />
