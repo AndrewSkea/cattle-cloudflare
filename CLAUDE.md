@@ -61,7 +61,7 @@ npx playwright test --config=playwright.prod.config.ts   # production smoke (rea
 # Deploy (from repo root)
 pnpm --filter web build
 pnpm --filter worker db:migrate   # remote D1 migrations
-pnpm --filter worker deploy
+pnpm --filter worker run deploy
 ```
 
 ## Database

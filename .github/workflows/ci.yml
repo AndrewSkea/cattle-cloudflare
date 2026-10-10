@@ -72,7 +72,7 @@ jobs:
       - name: Migrate remote D1
         run: pnpm --filter worker db:migrate
       - name: Deploy Worker
-        run: pnpm --filter worker deploy
+        run: pnpm --filter worker run deploy
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Production smoke tests

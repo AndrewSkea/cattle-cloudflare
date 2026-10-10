@@ -9,7 +9,7 @@
     "typecheck": "pnpm --filter worker typecheck && cd apps/web && tsc --noEmit",
     "test:e2e": "playwright test",
     "test:prod": "playwright test --config=playwright.prod.config.ts",
-    "deploy": "pnpm --filter web build && pnpm --filter worker db:migrate && pnpm --filter worker deploy"
+    "deploy": "pnpm --filter web build && pnpm --filter worker db:migrate && pnpm --filter worker run deploy"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
