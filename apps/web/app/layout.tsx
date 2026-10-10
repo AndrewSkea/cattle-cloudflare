@@ -1,26 +1,27 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import type { Metadata, Viewport } from 'next'
+import { Fraunces, Inter } from 'next/font/google'
 import './globals.css'
-import { AuthProvider } from '@/lib/auth-context'
+import { Providers } from './providers'
 
-const inter = Inter({ subsets: ['latin'] })
+const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
+const display = Fraunces({ subsets: ['latin'], variable: '--font-display', display: 'swap', axes: ['opsz'] })
 
 export const metadata: Metadata = {
-  title: 'Cattle Management System',
-  description: 'Modern cattle management system built on Cloudflare',
+  title: { default: 'Steading — Farm management', template: '%s · Steading' },
+  description: 'Livestock, land, machinery, people and money — one place to run your farm.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export const viewport: Viewport = {
+  themeColor: '#275040',
+  width: 'device-width',
+  initialScale: 1,
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+    <html lang="en-GB" className={`${sans.variable} ${display.variable}`}>
+      <body className="font-sans">
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

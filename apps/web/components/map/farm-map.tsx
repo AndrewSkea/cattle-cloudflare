@@ -1,362 +1,204 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import '@geoman-io/leaflet-geoman-free'
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
+import { Check, X } from 'lucide-react'
+import type { Parcel, Structure } from '@/lib/types'
+import { landUse, structureKind } from '@/lib/constants'
+import { fmtArea } from '@/lib/format'
+import { baseLayers, DEFAULT_CENTER, DEFAULT_ZOOM, geoJSONToLatLngs, polygonToGeoJSON } from './leaflet-base'
 
-// Fix Leaflet default marker icons
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-})
+export type MapMode =
+  | { kind: 'view' }
+  | { kind: 'draw-parcel' }
+  | { kind: 'edit-parcel'; id: number }
+  | { kind: 'place-structure'; id?: number }
+  | { kind: 'draw-boundary' }
 
-const FIELD_TYPE_COLORS: Record<string, string> = {
-  grazing: '#22c55e',
-  silage: '#f59e0b',
-  housing: '#3b82f6',
-  hay: '#9ca3af',
+export type Selection = { type: 'parcel' | 'structure'; id: number } | null
+
+interface Props {
+  center: { latitude: number | null; longitude: number | null; zoom: number | null }
+  boundary?: string | null
+  parcels: Parcel[]
+  structures: Structure[]
+  areaUnit?: 'ha' | 'ac'
+  selected?: Selection
+  mode: MapMode
+  height?: number | string
+  onSelect?: (s: Selection) => void
+  onDrawn?: (geojson: string, areaHa: number) => void
+  onEdited?: (id: number, geojson: string, areaHa: number) => void
+  onPlaced?: (lat: number, lng: number, id?: number) => void
+  onCancel?: () => void
 }
 
-function getFieldColor(fieldType: string | null, color: string | null): string {
-  if (color) return color
-  if (fieldType && FIELD_TYPE_COLORS[fieldType]) return FIELD_TYPE_COLORS[fieldType]
-  return '#6b7280'
-}
+export default function FarmMap(props: Props) {
+  const { center, boundary, parcels, structures, areaUnit = 'ha', selected, mode, height = 560 } = props
+  const el = useRef<HTMLDivElement>(null)
+  const map = useRef<L.Map | null>(null)
+  const parcelLayer = useRef<L.FeatureGroup>(L.featureGroup())
+  const structureLayer = useRef<L.FeatureGroup>(L.featureGroup())
+  const boundaryLayer = useRef<L.FeatureGroup>(L.featureGroup())
+  const polygons = useRef(new Map<number, L.Polygon>())
+  const fitted = useRef(false)
+  const cbs = useRef(props)
+  cbs.current = props
 
-/**
- * Calculate the area of a polygon defined by lat/lng coordinates using the
- * Shoelace formula on a local flat projection. Accurate for farm-scale areas.
- * Returns area in acres.
- */
-function calculatePolygonAreaAcres(points: L.LatLng[]): number {
-  if (points.length < 3) return 0
-
-  // Use the centroid as the projection origin
-  const avgLat = points.reduce((s, p) => s + p.lat, 0) / points.length
-  const latRad = (avgLat * Math.PI) / 180
-
-  // Meters per degree at this latitude
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos(latRad)
-
-  // Project to local meters and apply Shoelace formula
-  const projected = points.map((p) => ({
-    x: (p.lng - points[0].lng) * metersPerDegLng,
-    y: (p.lat - points[0].lat) * metersPerDegLat,
-  }))
-
-  let area = 0
-  for (let i = 0; i < projected.length; i++) {
-    const j = (i + 1) % projected.length
-    area += projected[i].x * projected[j].y
-    area -= projected[j].x * projected[i].y
-  }
-  area = Math.abs(area) / 2
-
-  // Convert square meters to acres (1 acre = 4046.8564224 m²)
-  return area / 4046.8564224
-}
-
-interface FarmMapProps {
-  fields: Array<{
-    id: number
-    name: string
-    fieldType: string | null
-    polygon: string | null
-    centerLat: number | null
-    centerLng: number | null
-    color: string | null
-    currentCattle: any[]
-    cattleCount: number
-    acreage: number | null
-  }>
-  selectedFieldId: number | null
-  onFieldClick: (id: number) => void
-  onPolygonDrawn: (geojson: string, center: { lat: number; lng: number }, acreage: number) => void
-  drawMode: boolean
-}
-
-export default function FarmMap({
-  fields,
-  selectedFieldId,
-  onFieldClick,
-  onPolygonDrawn,
-  drawMode,
-}: FarmMapProps) {
-  const mapContainerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const layersRef = useRef<L.LayerGroup | null>(null)
-  const drawLayerRef = useRef<L.LayerGroup | null>(null)
-  const [drawPoints, setDrawPoints] = useState<L.LatLng[]>([])
-  const drawPointsRef = useRef<L.LatLng[]>([])
-
-  // Keep ref in sync with state
+  // Init
   useEffect(() => {
-    drawPointsRef.current = drawPoints
-  }, [drawPoints])
-
-  // Initialize map once
-  useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return
-
-    const map = L.map(mapContainerRef.current, {
-      center: [56.0, -3.5],
-      zoom: 13,
-      zoomControl: true,
+    if (!el.current || map.current) return
+    const layers = baseLayers()
+    const m = L.map(el.current, { zoomControl: true })
+    m.setView(center.latitude != null && center.longitude != null ? [center.latitude, center.longitude] : DEFAULT_CENTER, center.zoom ?? (center.latitude != null ? 15 : DEFAULT_ZOOM))
+    layers.Satellite.addTo(m)
+    L.control.layers(layers, undefined, { position: 'topright' }).addTo(m)
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m)
+    boundaryLayer.current.addTo(m)
+    parcelLayer.current.addTo(m)
+    structureLayer.current.addTo(m)
+    m.pm.setGlobalOptions({ allowSelfIntersection: false, snappable: true, snapDistance: 15, templineStyle: { color: '#facc15' }, hintlineStyle: { color: '#facc15', dashArray: '5,5' }, pathOptions: { color: '#facc15', weight: 3 } } as any)
+    m.on('pm:create', (e: any) => {
+      const layer = e.layer as L.Polygon
+      const { geojson, areaHa } = polygonToGeoJSON(layer)
+      m.removeLayer(layer)
+      cbs.current.onDrawn?.(geojson, areaHa)
     })
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(map)
-
-    layersRef.current = L.layerGroup().addTo(map)
-    drawLayerRef.current = L.layerGroup().addTo(map)
-    mapRef.current = map
-
-    return () => {
-      map.remove()
-      mapRef.current = null
-    }
+    map.current = m
+    return () => { m.remove(); map.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Render field polygons
+  // Farm boundary
   useEffect(() => {
-    const layers = layersRef.current
-    if (!layers) return
-    layers.clearLayers()
+    boundaryLayer.current.clearLayers()
+    const ll = geoJSONToLatLngs(boundary ?? null)
+    if (ll) L.polygon(ll, { color: '#fde68a', weight: 2.5, dashArray: '8 6', fill: false, interactive: false }).addTo(boundaryLayer.current)
+  }, [boundary])
 
-    fields.forEach((field) => {
-      if (!field.polygon) return
-
-      try {
-        const geojson = JSON.parse(field.polygon)
-        const color = getFieldColor(field.fieldType, field.color)
-        const isSelected = field.id === selectedFieldId
-
-        const layer = L.geoJSON(geojson, {
-          style: {
-            color: color,
-            weight: isSelected ? 4 : 2,
-            opacity: isSelected ? 1 : 0.8,
-            fillColor: color,
-            fillOpacity: isSelected ? 0.35 : 0.2,
-          },
-        })
-
-        const acreageText = field.acreage ? `<br/>${field.acreage.toFixed(2)} acres` : ''
-        layer.bindTooltip(
-          `<strong>${field.name}</strong><br/>${field.fieldType || 'Unknown type'}${acreageText}<br/>${field.cattleCount} cattle`,
-          { sticky: true }
-        )
-
-        layer.on('click', () => {
-          onFieldClick(field.id)
-        })
-
-        layer.addTo(layers)
-      } catch {
-        // Skip fields with invalid polygon JSON
-      }
-    })
-
-    // Fit bounds if there are fields with polygons
-    const fieldsWithPolygons = fields.filter((f) => f.polygon)
-    if (fieldsWithPolygons.length > 0 && mapRef.current) {
-      try {
-        const allCoords: L.LatLng[] = []
-        fieldsWithPolygons.forEach((f) => {
-          const geojson = JSON.parse(f.polygon!)
-          L.geoJSON(geojson).eachLayer((layer) => {
-            if ((layer as any).getLatLngs) {
-              const extractLatLngs = (latlngs: any): void => {
-                if (Array.isArray(latlngs)) {
-                  latlngs.forEach((ll) => {
-                    if (ll instanceof L.LatLng) {
-                      allCoords.push(ll)
-                    } else if (Array.isArray(ll)) {
-                      extractLatLngs(ll)
-                    }
-                  })
-                }
-              }
-              extractLatLngs((layer as any).getLatLngs())
-            }
-          })
-        })
-        if (allCoords.length > 0) {
-          const bounds = L.latLngBounds(allCoords)
-          mapRef.current.fitBounds(bounds, { padding: [50, 50] })
-        }
-      } catch {
-        // Ignore bounds errors
-      }
-    }
-  }, [fields, selectedFieldId, onFieldClick])
-
-  // Handle draw mode
+  // Parcels
   useEffect(() => {
-    const map = mapRef.current
-    const drawLayer = drawLayerRef.current
-    if (!map || !drawLayer) return
-
-    if (!drawMode) {
-      drawLayer.clearLayers()
-      setDrawPoints([])
-      map.getContainer().style.cursor = ''
-      return
-    }
-
-    map.getContainer().style.cursor = 'crosshair'
-
-    const onClick = (e: L.LeafletMouseEvent) => {
-      const point = e.latlng
-      const newPoints = [...drawPointsRef.current, point]
-      setDrawPoints(newPoints)
-
-      // Add marker at click point
-      L.circleMarker(point, {
-        radius: 6,
-        color: '#ef4444',
-        fillColor: '#ef4444',
-        fillOpacity: 1,
-      }).addTo(drawLayer)
-
-      // Redraw lines
-      drawLayer.eachLayer((layer) => {
-        if (layer instanceof L.Polyline && !(layer instanceof L.CircleMarker)) {
-          drawLayer.removeLayer(layer)
+    const g = parcelLayer.current
+    g.clearLayers()
+    polygons.current.clear()
+    for (const p of parcels) {
+      const ll = geoJSONToLatLngs(p.polygon)
+      if (!ll) continue
+      const color = p.color || landUse(p.landUse).color
+      const isSel = selected?.type === 'parcel' && selected.id === p.id
+      const poly = L.polygon(ll, { color: isSel ? '#fde047' : color, weight: isSel ? 4 : 2.5, fillColor: color, fillOpacity: isSel ? 0.45 : 0.3 })
+      poly.bindTooltip(`${p.name}${p.animalCount ? ` · ${p.animalCount}` : ''}`, { permanent: true, direction: 'center', className: 'field-label' })
+      const popup = `<div style="min-width:160px"><div style="font-weight:600">${escapeHtml(p.name)}</div><div style="color:#78716c;font-size:12px;margin-top:2px">${landUse(p.landUse).label} · ${fmtArea(p.areaHa, areaUnit)}</div>${p.animalCount ? `<div style="margin-top:6px;font-size:12px">${p.animalCount} animals grazing</div>` : ''}</div>`
+      poly.on('click', (e: L.LeafletMouseEvent) => {
+        const m = cbs.current.mode
+        if (m.kind === 'place-structure') {
+          L.DomEvent.stopPropagation(e)
+          cbs.current.onPlaced?.(e.latlng.lat, e.latlng.lng, m.id)
+        } else if (m.kind === 'view') {
+          L.popup().setLatLng(e.latlng).setContent(popup).openOn(map.current!)
+          cbs.current.onSelect?.({ type: 'parcel', id: p.id })
         }
       })
-
-      if (newPoints.length >= 2) {
-        L.polyline(newPoints, {
-          color: '#ef4444',
-          weight: 2,
-          dashArray: '6, 6',
-        }).addTo(drawLayer)
-      }
+      poly.addTo(g)
+      polygons.current.set(p.id, poly)
     }
-
-    const onDblClick = (e: L.LeafletMouseEvent) => {
-      // Prevent default zoom on double-click
-      const domEvent = e.originalEvent
-      if (domEvent) {
-        domEvent.preventDefault()
-        domEvent.stopPropagation()
-      }
-      finishDrawing()
+    if (!fitted.current && map.current) {
+      const all = L.featureGroup([...g.getLayers(), ...boundaryLayer.current.getLayers()])
+      if (all.getLayers().length) { map.current.fitBounds(all.getBounds(), { padding: [30, 30], maxZoom: 17 }); fitted.current = true }
     }
+  }, [parcels, selected, areaUnit])
 
-    map.on('click', onClick)
-    map.on('dblclick', onDblClick)
+  // Structures
+  useEffect(() => {
+    const g = structureLayer.current
+    g.clearLayers()
+    for (const s of structures) {
+      if (s.latitude == null || s.longitude == null) continue
+      const isSel = selected?.type === 'structure' && selected.id === s.id
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="structure-pin" style="${isSel ? 'border-color:#facc15;transform:scale(1.15)' : ''}">${structureKind(s.kind).emoji}</div>`,
+        iconSize: [32, 32], iconAnchor: [16, 16],
+      })
+      const m = L.marker([s.latitude, s.longitude], { icon, title: s.name })
+      m.bindTooltip(s.name, { direction: 'top', offset: [0, -14] })
+      m.on('click', () => cbs.current.onSelect?.({ type: 'structure', id: s.id }))
+      m.addTo(g)
+    }
+  }, [structures, selected])
 
-    return () => {
-      map.off('click', onClick)
-      map.off('dblclick', onDblClick)
-      map.getContainer().style.cursor = ''
+  // Fly to selection
+  useEffect(() => {
+    const m = map.current
+    if (!m || !selected) return
+    if (selected.type === 'parcel') {
+      const poly = polygons.current.get(selected.id)
+      if (poly) m.flyToBounds(poly.getBounds(), { padding: [60, 60], maxZoom: 17, duration: 0.6 })
+    } else {
+      const s = structures.find((x) => x.id === selected.id)
+      if (s?.latitude != null && s.longitude != null) m.flyTo([s.latitude, s.longitude], Math.max(m.getZoom(), 17), { duration: 0.6 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawMode])
+  }, [selected?.type, selected?.id])
 
-  const finishDrawing = useCallback(() => {
-    const points = drawPointsRef.current
-    if (points.length < 3) return
-
-    // Build GeoJSON polygon
-    const coordinates = points.map((p) => [p.lng, p.lat])
-    // Close the ring
-    coordinates.push([points[0].lng, points[0].lat])
-
-    const geojson = {
-      type: 'Feature' as const,
-      properties: {},
-      geometry: {
-        type: 'Polygon' as const,
-        coordinates: [coordinates],
-      },
-    }
-
-    // Calculate center
-    const latSum = points.reduce((s, p) => s + p.lat, 0)
-    const lngSum = points.reduce((s, p) => s + p.lng, 0)
-    const center = {
-      lat: latSum / points.length,
-      lng: lngSum / points.length,
-    }
-
-    // Calculate area from polygon
-    const acreage = calculatePolygonAreaAcres(points)
-
-    onPolygonDrawn(JSON.stringify(geojson), center, acreage)
-
-    // Clear draw layer
-    if (drawLayerRef.current) {
-      drawLayerRef.current.clearLayers()
-    }
-    setDrawPoints([])
-  }, [onPolygonDrawn])
-
-  // Listen for Enter key to finish drawing
+  // Modes
   useEffect(() => {
-    if (!drawMode) return
+    const m = map.current
+    if (!m) return
+    const container = m.getContainer()
+    m.pm.disableDraw()
+    polygons.current.forEach((p) => p.pm.disable())
+    container.style.cursor = ''
+    let clickHandler: ((e: L.LeafletMouseEvent) => void) | null = null
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        finishDrawing()
-      } else if (e.key === 'Escape') {
-        if (drawLayerRef.current) {
-          drawLayerRef.current.clearLayers()
-        }
-        setDrawPoints([])
-      }
+    if (mode.kind === 'draw-parcel' || mode.kind === 'draw-boundary') {
+      m.pm.enableDraw('Polygon', { finishOn: null, continueDrawing: false } as any)
+    } else if (mode.kind === 'edit-parcel') {
+      polygons.current.get(mode.id)?.pm.enable({ allowSelfIntersection: false })
+    } else if (mode.kind === 'place-structure') {
+      container.style.cursor = 'crosshair'
+      clickHandler = (e) => cbs.current.onPlaced?.(e.latlng.lat, e.latlng.lng, mode.id)
+      m.on('click', clickHandler)
     }
+    return () => {
+      if (clickHandler) m.off('click', clickHandler)
+      container.style.cursor = ''
+    }
+  }, [mode])
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [drawMode, finishDrawing])
+  const saveEdit = () => {
+    if (mode.kind !== 'edit-parcel') return
+    const poly = polygons.current.get(mode.id)
+    if (!poly) return
+    const { geojson, areaHa } = polygonToGeoJSON(poly)
+    poly.pm.disable()
+    props.onEdited?.(mode.id, geojson, areaHa)
+  }
+
+  const hint = mode.kind === 'draw-parcel' || mode.kind === 'draw-boundary'
+    ? 'Click to add corners. Click the first point to finish.'
+    : mode.kind === 'edit-parcel' ? 'Drag the corners to reshape. Click a midpoint to add a corner.'
+      : mode.kind === 'place-structure' ? 'Click the map where the building is.' : null
 
   return (
-    <div className="relative w-full h-full">
-      <div ref={mapContainerRef} className="w-full h-full" />
-
-      {/* Draw mode overlay */}
-      {drawMode && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-lg shadow-lg border border-gray-200 px-4 py-2 flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-sm font-medium text-gray-700">
-            Drawing mode: Click to add points
-            {drawPoints.length > 0 && ` (${drawPoints.length} points)`}
-          </span>
-          {drawPoints.length >= 3 && (
-            <button
-              onClick={finishDrawing}
-              className="ml-2 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors"
-            >
-              Finish
-            </button>
+    <div className="relative">
+      <div ref={el} style={{ height }} className="overflow-hidden rounded-2xl ring-1 ring-stone-900/10" />
+      {hint && (
+        <div className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-sm text-white shadow-pop backdrop-blur">
+          <span>{hint}</span>
+          {mode.kind === 'edit-parcel' && (
+            <button onClick={saveEdit} className="flex items-center gap-1 rounded-full bg-wheat-400 px-3 py-1 text-xs font-semibold text-brand-950 hover:bg-wheat-300"><Check className="size-3.5" />Save shape</button>
           )}
-          {drawPoints.length > 0 && (
-            <button
-              onClick={() => {
-                if (drawLayerRef.current) {
-                  drawLayerRef.current.clearLayers()
-                }
-                setDrawPoints([])
-              }}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md transition-colors"
-            >
-              Clear
-            </button>
-          )}
+          <button onClick={() => props.onCancel?.()} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-medium hover:bg-white/25"><X className="size-3.5" />Cancel</button>
         </div>
       )}
     </div>
   )
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }

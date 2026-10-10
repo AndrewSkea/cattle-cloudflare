@@ -1,184 +1,171 @@
 'use client'
 
-import { useState } from 'react'
-import { useAuth } from '@/lib/auth-context'
-import { apiClient } from '@/lib/api-client'
+import { Suspense, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Check, KeyRound, LogOut, Sprout } from 'lucide-react'
+import { Logo } from '@/components/shell'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/display'
+import { Field, FormError, Input, Select, TextField } from '@/components/ui/form'
+import { api } from '@/lib/api'
+import { SPECIES } from '@/lib/constants'
+import { useMe, useSignOut } from '@/lib/session'
+import { cn } from '@/lib/utils'
+import type { Species } from '@/lib/types'
+import type { LatLngZoom } from '@/components/map/location-picker'
 
-export default function OnboardingPage() {
-  const { user, refresh } = useAuth()
+const LocationPicker = dynamic(() => import('@/components/map/location-picker'), { ssr: false, loading: () => <div className="h-[300px] animate-pulse rounded-xl bg-stone-200" /> })
+
+function Onboarding() {
+  const { data: me, isLoading } = useMe()
+  const params = useSearchParams()
+  const router = useRouter()
+  useEffect(() => {
+    if (isLoading) return
+    if (me === null) router.replace('/login?next=/onboarding')
+    else if (me?.farm && params.get('new') !== '1') router.replace('/dashboard')
+  }, [me, isLoading, params, router])
+  const qc = useQueryClient()
+  const signOut = useSignOut()
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
-  const [farmName, setFarmName] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [invitePreview, setInvitePreview] = useState<{ farmName: string; role: string; accessDuration: number | null } | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [species, setSpecies] = useState<Species[]>(['cattle'])
+  const [loc, setLoc] = useState<LatLngZoom | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const adding = params.get('new') === '1' && !!me?.farm
 
-  const handleCreateFarm = async () => {
-    if (!farmName.trim()) return
-    setLoading(true)
-    setError(null)
+  const create = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const f = new FormData(e.currentTarget)
+    setBusy(true); setError(null)
     try {
-      await apiClient.createFarm({ name: farmName.trim() })
-      await refresh()
-      window.location.href = '/dashboard'
+      await api.post('/api/farms', {
+        name: f.get('name'), holdingNumber: f.get('holdingNumber') || null, currency: f.get('currency'), areaUnit: f.get('areaUnit'),
+        species, latitude: loc?.latitude ?? null, longitude: loc?.longitude ?? null, zoom: loc?.zoom ?? null,
+      })
+      qc.clear()
+      router.replace('/dashboard')
     } catch (err: any) {
-      setError(err.message || 'Failed to create farm')
-      setLoading(false)
+      setError(err.message); setBusy(false)
     }
   }
 
-  const handleLookupInvite = async () => {
-    const code = inviteCode.trim().split('/').pop() || inviteCode.trim()
-    if (!code) return
-    setLoading(true)
-    setError(null)
+  const join = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const raw = String(new FormData(e.currentTarget).get('code') || '').trim()
+    const code = raw.includes('code=') ? new URL(raw, window.location.origin).searchParams.get('code') || '' : raw.split('/').pop() || ''
+    setBusy(true); setError(null)
     try {
-      const result: any = await apiClient.getInviteDetails(code)
-      setInvitePreview(result.data)
+      await api.post('/api/farm/join', { code })
+      qc.clear()
+      router.replace('/dashboard')
     } catch (err: any) {
-      setError(err.message || 'Invalid invite code')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleAcceptInvite = async () => {
-    const code = inviteCode.trim().split('/').pop() || inviteCode.trim()
-    setLoading(true)
-    setError(null)
-    try {
-      await apiClient.acceptInvite(code)
-      await refresh()
-      window.location.href = '/dashboard'
-    } catch (err: any) {
-      setError(err.message || 'Failed to join farm')
-      setLoading(false)
+      setError(err.message); setBusy(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-lg">
-        <div className="text-center mb-8">
-          <span className="text-5xl">🐄</span>
-          <h1 className="text-2xl font-bold text-gray-900 mt-4">
-            Welcome{user?.name ? `, ${user.name}` : ''}!
-          </h1>
-          <p className="text-gray-500 mt-2">Let&apos;s get you set up with a farm</p>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6">
-            <p className="text-red-800 text-sm">{error}</p>
-          </div>
-        )}
-
+    <div className="min-h-screen bg-stone-50">
+      <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
+        <Logo />
+        {adding
+          ? <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')}><ArrowLeft />Back to {me?.farm?.name}</Button>
+          : <Button variant="ghost" size="sm" onClick={signOut}><LogOut />Sign out</Button>}
+      </header>
+      <main className="mx-auto max-w-3xl px-6 pb-20 pt-6">
         {mode === 'choose' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button
-              onClick={() => setMode('create')}
-              className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-8 text-center hover:border-green-500 hover:shadow-xl transition-all"
-            >
-              <div className="text-4xl mb-4">🏗️</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Create a Farm</h3>
-              <p className="text-sm text-gray-500">Start fresh and invite your team</p>
-            </button>
-            <button
-              onClick={() => setMode('join')}
-              className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-8 text-center hover:border-blue-500 hover:shadow-xl transition-all"
-            >
-              <div className="text-4xl mb-4">🤝</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Join a Farm</h3>
-              <p className="text-sm text-gray-500">Enter an invite code or link</p>
-            </button>
+          <div className="animate-slide-up">
+            <h1 className="font-display text-4xl font-semibold tracking-tight text-stone-900">
+              {adding ? 'Add another farm' : `Welcome${me?.user.name ? `, ${me.user.name.split(' ')[0]}` : ''}`}
+            </h1>
+            <p className="mt-2 text-stone-600">Set up your farm, or join one you’ve been invited to.</p>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2">
+              <button onClick={() => setMode('create')} className="group text-left focus-ring rounded-2xl">
+                <Card className="h-full p-6 transition group-hover:shadow-lift group-hover:ring-brand-300">
+                  <div className="grid size-11 place-items-center rounded-xl bg-brand-700 text-white"><Sprout className="size-5" /></div>
+                  <h2 className="mt-5 text-lg font-semibold text-stone-900">Create a farm</h2>
+                  <p className="mt-1 text-sm text-stone-500">You’ll be the owner. Invite your team afterwards.</p>
+                </Card>
+              </button>
+              <button onClick={() => setMode('join')} className="group text-left focus-ring rounded-2xl">
+                <Card className="h-full p-6 transition group-hover:shadow-lift group-hover:ring-brand-300">
+                  <div className="grid size-11 place-items-center rounded-xl bg-wheat-100 text-wheat-800"><KeyRound className="size-5" /></div>
+                  <h2 className="mt-5 text-lg font-semibold text-stone-900">Join with an invite</h2>
+                  <p className="mt-1 text-sm text-stone-500">Paste the invite link or code someone sent you.</p>
+                </Card>
+              </button>
+            </div>
           </div>
         )}
 
         {mode === 'create' && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Create Your Farm</h2>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Farm Name</label>
-              <input
-                type="text"
-                value={farmName}
-                onChange={(e) => setFarmName(e.target.value)}
-                placeholder="e.g. Hillside Farm"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                autoFocus
-              />
+          <form onSubmit={create} className="animate-slide-up space-y-8">
+            <div>
+              <button type="button" onClick={() => setMode('choose')} className="mb-4 inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"><ArrowLeft className="size-4" />Back</button>
+              <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900">Tell us about your farm</h1>
+              <p className="mt-1 text-stone-600">You can change any of this later in farm settings.</p>
             </div>
-            <p className="text-xs text-gray-400 mb-6">You&apos;ll be the farm owner and can invite others later.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setMode('choose'); setError(null) }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleCreateFarm}
-                disabled={!farmName.trim() || loading}
-                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {loading ? 'Creating...' : 'Create Farm'}
-              </button>
+            <Card className="space-y-5 p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField label="Farm name" name="name" required maxLength={100} placeholder="e.g. Hillhead Farm" />
+                <TextField label="Holding number" name="holdingNumber" placeholder="e.g. 12/345/6789" hint="CPH or herd number (optional)" />
+              </div>
+              <Field label="What do you keep?" hint="Choose all that apply">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {SPECIES.filter((s) => s.value !== 'other').map((s) => {
+                    const on = species.includes(s.value)
+                    return (
+                      <button type="button" key={s.value} aria-pressed={on}
+                        onClick={() => setSpecies((x) => on ? (x.length > 1 ? x.filter((y) => y !== s.value) : x) : [...x, s.value])}
+                        className={cn('flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium ring-1 transition',
+                          on ? 'bg-brand-50 text-brand-900 ring-brand-400' : 'bg-white text-stone-700 ring-stone-200 hover:ring-stone-300')}>
+                        <span className="text-lg">{s.emoji}</span>{s.plural}
+                        {on && <Check className="ml-auto size-4 text-brand-700" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Currency"><Select name="currency" defaultValue="GBP">{['GBP', 'EUR', 'USD', 'AUD', 'NZD', 'CAD'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
+                <Field label="Land area unit"><Select name="areaUnit" defaultValue="ha"><option value="ha">Hectares</option><option value="ac">Acres</option></Select></Field>
+              </div>
+            </Card>
+            <Card className="space-y-3 p-6">
+              <div>
+                <h2 className="font-semibold text-stone-900">Where is it?</h2>
+                <p className="text-sm text-stone-500">Centres your farm map and gives you a local weather forecast.</p>
+              </div>
+              <LocationPicker value={loc} onChange={setLoc} height={300} />
+            </Card>
+            <FormError error={error} />
+            <div className="flex justify-end">
+              <Button type="submit" size="lg" loading={busy}>Create farm</Button>
             </div>
-          </div>
+          </form>
         )}
 
         {mode === 'join' && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Join a Farm</h2>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Invite Code or Link</label>
-              <input
-                type="text"
-                value={inviteCode}
-                onChange={(e) => { setInviteCode(e.target.value); setInvitePreview(null) }}
-                placeholder="e.g. ABC12345 or https://..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                autoFocus
-              />
+          <form onSubmit={join} className="animate-slide-up space-y-6">
+            <div>
+              <button type="button" onClick={() => setMode('choose')} className="mb-4 inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"><ArrowLeft className="size-4" />Back</button>
+              <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900">Join a farm</h1>
+              <p className="mt-1 text-stone-600">Paste the invite link or the code at the end of it.</p>
             </div>
-
-            {invitePreview && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <p className="text-sm text-blue-900">
-                  You&apos;ll join <strong>{invitePreview.farmName}</strong> as a <strong className="capitalize">{invitePreview.role}</strong>
-                  {invitePreview.accessDuration && ` for ${invitePreview.accessDuration} days`}
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setMode('choose'); setError(null); setInvitePreview(null) }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
-              >
-                Back
-              </button>
-              {!invitePreview ? (
-                <button
-                  onClick={handleLookupInvite}
-                  disabled={!inviteCode.trim() || loading}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {loading ? 'Looking up...' : 'Look Up Invite'}
-                </button>
-              ) : (
-                <button
-                  onClick={handleAcceptInvite}
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {loading ? 'Joining...' : 'Join Farm'}
-                </button>
-              )}
-            </div>
-          </div>
+            <Card className="space-y-4 p-6">
+              <Field label="Invite link or code"><Input name="code" required placeholder="https://…/join?code=abc123" /></Field>
+              <FormError error={error} />
+              <div className="flex justify-end"><Button type="submit" loading={busy}>Join farm</Button></div>
+            </Card>
+          </form>
         )}
-      </div>
+      </main>
     </div>
   )
+}
+
+export default function OnboardingPage() {
+  return <Suspense><Onboarding /></Suspense>
 }
