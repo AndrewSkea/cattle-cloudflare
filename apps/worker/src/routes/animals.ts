@@ -17,6 +17,7 @@ import {
   ageMonths, animalInFarm, classify, descendantIds, families, familyReport, loadFarmGraph,
 } from '../services/livestock';
 import { syncSourceTxn, deleteSourceTxn } from '../services/finance';
+import { exitAnimal, reinstateAnimal } from '../services/exit';
 
 const animals = new Hono<AppEnv>();
 animals.use('*', requireAccess('viewer', 'worker'));
@@ -178,7 +179,7 @@ animals.get('/export', async (c) => {
   const rows = await c.get('db').select().from(schema.animals).where(eq(schema.animals.farmId, s.farmId)).all();
   const tag = new Map(rows.map((r) => [r.id, r.tagNo]));
   const cols = ['tagNo', 'managementTag', 'name', 'species', 'sex', 'castrated', 'breed', 'colour', 'dob', 'damTag', 'sireTag', 'sireName',
-    'status', 'origin', 'purchaseDate', 'purchasePrice', 'exitDate', 'exitReason', 'salePrice', 'saleWeightKg', 'buyer', 'notes'] as const;
+    'status', 'origin', 'purchaseDate', 'purchasePrice', 'exitDate', 'exitReason', 'salePrice', 'saleWeightKg', 'buyer', 'carcaseWeightKg', 'carcaseGrade', 'notes'] as const;
   const esc = (v: unknown) => {
     const str = v == null ? '' : String(v);
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
@@ -402,45 +403,22 @@ animals.put('/:id', async (c) => {
 
 animals.post('/:id/exit', async (c) => {
   const s = farmSession(c);
-  const id = idParam(c);
-  const db = c.get('db');
-  const a = await animalInFarm(db, s.farmId, id);
+  const a = await animalInFarm(c.get('db'), s.farmId, idParam(c));
   if (!a) throw notFound('Animal');
   const data = await body(c, z.object({
-    status: z.enum(ANIMAL_STATUS).refine((v) => v !== 'active', 'choose sold, died, culled or missing'),
+    status: z.enum(['sold', 'died', 'culled', 'missing']),
     exitDate: isoDate, exitReason: optText(500), salePrice: optPosNum, saleWeightKg: optPosNum, buyer: optText(150),
+    carcaseWeightKg: optPosNum, carcaseGrade: optText(10),
     overrideWithdrawal: z.boolean().default(false),
   }));
-  if (a.dob && data.exitDate < a.dob) throw new HttpError(422, 'Exit date is before the date of birth');
-  const isSale = data.status === 'sold' || data.status === 'culled';
-  if (isSale && !data.overrideWithdrawal) {
-    const w = await db.select({ until: schema.healthRecords.withdrawalMeatUntil, title: schema.healthRecords.title }).from(schema.healthRecords)
-      .where(and(eq(schema.healthRecords.animalId, id), gte(schema.healthRecords.withdrawalMeatUntil, data.exitDate))).get();
-    if (w) throw new HttpError(409, `${a.tagNo} is under a meat withdrawal period until ${w.until} (${w.title}).`, { code: 'withdrawal' });
-  }
-  const [updated] = await db.update(schema.animals).set({
-    status: data.status, exitDate: data.exitDate, exitReason: data.exitReason,
-    salePrice: isSale ? data.salePrice ?? null : null, saleWeightKg: isSale ? data.saleWeightKg ?? null : null,
-    buyer: isSale ? data.buyer ?? null : null, parcelId: null, structureId: null, updatedAt: now(),
-  }).where(eq(schema.animals.id, id)).returning();
-  await syncSourceTxn(db, s.farmId, s.userId, 'animal_sale', id, isSale && data.salePrice ? {
-    type: 'income', category: 'livestock_sales', amount: data.salePrice, date: data.exitDate,
-    description: `Sale of ${a.tagNo}`, counterparty: data.buyer, animalId: id,
-  } : null);
-  await logActivity(c, data.status, 'animal', id, `${a.tagNo} marked as ${data.status}`);
-  return c.json({ data: updated });
+  return c.json({ data: await exitAnimal(c, a, data) });
 });
 
 animals.post('/:id/reinstate', async (c) => {
   const s = farmSession(c);
-  const id = idParam(c);
-  const db = c.get('db');
-  const a = await animalInFarm(db, s.farmId, id);
+  const a = await animalInFarm(c.get('db'), s.farmId, idParam(c));
   if (!a) throw notFound('Animal');
-  await db.update(schema.animals).set({ status: 'active', exitDate: null, exitReason: null, salePrice: null, saleWeightKg: null, buyer: null, updatedAt: now() })
-    .where(eq(schema.animals.id, id));
-  await deleteSourceTxn(db, s.farmId, 'animal_sale', id);
-  await logActivity(c, 'reinstated', 'animal', id, `${a.tagNo} returned to the herd`);
+  await reinstateAnimal(c, a);
   return c.json({ ok: true });
 });
 

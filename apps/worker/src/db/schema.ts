@@ -31,6 +31,7 @@ export const farms = sqliteTable('farms', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   holdingNumber: text('holding_number'), // e.g. UK CPH number
+  herdMark: text('herd_mark'), // APHA herd mark, e.g. 523801 (first 6 digits of UK cattle tags)
   address: text('address'),
   latitude: real('latitude'),
   longitude: real('longitude'),
@@ -143,6 +144,8 @@ export const animals = sqliteTable('animals', {
   salePrice: real('sale_price'),
   saleWeightKg: real('sale_weight_kg'),
   buyer: text('buyer'),
+  carcaseWeightKg: real('carcase_weight_kg'),
+  carcaseGrade: text('carcase_grade'), // EUROP conformation + fat class, e.g. R4L
   notes: text('notes'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -410,7 +413,126 @@ export const activityLog = sqliteTable('activity_log', {
   farm: index('idx_activity_farm').on(t.farmId, t.createdAt),
 }));
 
+// ==================== INTEGRATIONS ====================
+
+/** Per-farm settings for external services (provider: orkney_mart | scoteid). Secrets are AES-GCM encrypted. */
+export const farmIntegrations = sqliteTable('farm_integrations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  config: text('config').notNull().default('{}'), // JSON, non-secret
+  secret: text('secret'), // encrypted JSON
+  status: text('status').notNull().default('active'), // active|error|disabled
+  lastSyncAt: text('last_sync_at'),
+  lastError: text('last_error'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farmProvider: uniqueIndex('ux_integration_farm_provider').on(t.farmId, t.provider),
+}));
+
+// Public mart data (shared by all farms)
+export const martReports = sqliteTable('mart_reports', {
+  id: integer('id').primaryKey(), // source event id
+  source: text('source').notNull().default('orkney'),
+  date: text('date').notNull(),
+  title: text('title').notNull(),
+  url: text('url').notNull(),
+  summary: text('summary'),
+  contentHash: text('content_hash').notNull(),
+  lotCount: integer('lot_count').notNull().default(0),
+  fetchedAt: text('fetched_at').notNull(),
+}, (t) => ({
+  date: index('idx_mart_report_date').on(t.source, t.date),
+}));
+
+export const martLots = sqliteTable('mart_lots', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  reportId: integer('report_id').notNull().references(() => martReports.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  section: text('section').notNull(),
+  category: text('category').notNull(),
+  species: text('species').notNull(),
+  basis: text('basis').notNull(), // kg|head
+  sellerKey: text('seller_key').notNull(),
+  seller: text('seller').notNull(),
+  weightKg: real('weight_kg'),
+  price: real('price').notNull(),
+  pricePerKg: real('price_per_kg'),
+  breedCode: text('breed_code'),
+  headCount: integer('head_count').notNull().default(1),
+  buyer: text('buyer'),
+  top: integer('top', { mode: 'boolean' }).notNull().default(false),
+  raw: text('raw').notNull(),
+}, (t) => ({
+  seller: index('idx_mart_lot_seller').on(t.sellerKey),
+  report: index('idx_mart_lot_report').on(t.reportId),
+  catDate: index('idx_mart_lot_cat_date').on(t.category, t.date),
+}));
+
+export const martAverages = sqliteTable('mart_averages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  reportId: integer('report_id').notNull().references(() => martReports.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  label: text('label').notNull(),
+  category: text('category').notNull(),
+  species: text('species').notNull(),
+  unit: text('unit').notNull(), // ppk|gbp
+  value: real('value').notNull(),
+}, (t) => ({
+  catDate: index('idx_mart_avg_cat_date').on(t.category, t.date),
+}));
+
+/** A mart lot that looks like it was sold by this farm, awaiting review / imported / dismissed. */
+export const martMatches = sqliteTable('mart_matches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  lotId: integer('lot_id').notNull().references(() => martLots.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('new'), // new|imported|dismissed
+  animalIds: text('animal_ids'), // JSON array once imported
+  decidedBy: integer('decided_by'),
+  decidedAt: text('decided_at'),
+  createdAt: createdAt(),
+}, (t) => ({
+  farmLot: uniqueIndex('ux_mart_match_farm_lot').on(t.farmId, t.lotId),
+  farmStatus: index('idx_mart_match_farm_status').on(t.farmId, t.status),
+}));
+
+/** Snapshot of what ScotEID holds for the farm's holding, refreshed on each sync. */
+export const scoteidAnimals = sqliteTable('scoteid_animals', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  tag: text('tag').notNull(), // normalised, e.g. UK523801200788
+  sex: text('sex'),
+  dob: text('dob'),
+  breedCode: text('breed_code'),
+  damTag: text('dam_tag'),
+  sireTag: text('sire_tag'),
+  birthCph: text('birth_cph'),
+  currentCph: text('current_cph'),
+  dateOnMainCph: text('date_on_main_cph'),
+  syncedAt: text('synced_at').notNull(),
+}, (t) => ({
+  farmTag: uniqueIndex('ux_scoteid_animal_farm_tag').on(t.farmId, t.tag),
+}));
+
+export const scoteidEvents = sqliteTable('scoteid_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  tag: text('tag').notNull(),
+  eventType: integer('event_type').notNull(), // 0 birth, 1 import, 2 on, 3 off, 7 death, …
+  date: text('date').notNull(),
+  notificationDate: text('notification_date'),
+  cph: text('cph'),
+  otherCph: text('other_cph'),
+  syncedAt: text('synced_at').notNull(),
+}, (t) => ({
+  uniq: uniqueIndex('ux_scoteid_event').on(t.farmId, t.tag, t.eventType, t.date),
+  farmTag: index('idx_scoteid_event_farm_tag').on(t.farmId, t.tag),
+}));
+
 export type User = typeof users.$inferSelect;
 export type Farm = typeof farms.$inferSelect;
 export type Animal = typeof animals.$inferSelect;
 export type Equipment = typeof equipment.$inferSelect;
+export type MartLot = typeof martLots.$inferSelect;
