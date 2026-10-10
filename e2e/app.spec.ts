@@ -373,3 +373,73 @@ test('calendar, reports, families, health and quick find render', async () => {
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: '22-6' })).toBeVisible()
 })
+
+test('mart sales: find the farm in Orkney Mart reports, import a lot, undo it', async () => {
+  await page.goto('/mart')
+  await expect(page.getByRole('heading', { name: 'Your mart sales, without the typing' })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Search seller names' }).fill('Staye')
+  await page.getByRole('button', { name: /^Staye, Deerness/ }).click()
+  await page.getByRole('button', { name: 'Find my sales' }).click()
+  await expect(page.getByText('Found 8 sales')).toBeVisible()
+  await expect(page.getByRole('tab', { name: /To review/ })).toContainText('8')
+  // Lots are compared with that day's market average for the same class.
+  await expect(page.getByText('+22.3p')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Import Prime steers £2356' }).click()
+  const sheet = dialog(page, 'Import mart sale')
+  await expect(sheet.getByText('630 kg · Aberdeen Angus')).toBeVisible()
+  await sheet.getByRole('checkbox').first().check()
+  await sheet.getByRole('button', { name: 'Import sale' }).click()
+  await expect(page.getByText('Sale imported')).toBeVisible()
+  await expect(page.getByRole('tab', { name: /Imported/ })).toContainText('1')
+
+  const txns = await (await page.request.get('/api/finance/transactions')).json()
+  const sale = txns.data.find((t: any) => t.source === 'animal_sale' && t.amount === 2356 && t.date === '2026-08-24')
+  expect(sale, 'mart sale is booked as income').toBeTruthy()
+
+  await page.getByRole('tab', { name: /Imported/ }).click()
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Undo import' }).click()
+  await expect(page.getByText('Moved back to review')).toBeVisible()
+  const after = await (await page.request.get('/api/finance/transactions')).json()
+  expect(after.data.find((t: any) => t.id === sale.id), 'undo removes the income').toBeFalsy()
+
+  await page.getByRole('tab', { name: /To review/ }).click()
+  await page.getByRole('button', { name: 'Not ours: Prime steers 2268' }).click()
+  await expect(page.getByRole('tab', { name: /Not ours/ })).toContainText('1')
+  await page.getByRole('tab', { name: /Market prices/ }).click()
+  await expect(page.getByRole('heading', { name: 'Orkney Mart prices, p/kg' })).toBeVisible()
+
+  await page.goto('/dashboard')
+  await expect(page.getByText('7 mart sales to review')).toBeVisible()
+})
+
+test('traceability: ear tag checks, ScotEID connection and reconciliation, holding register', async () => {
+  await page.goto('/traceability?tab=tags')
+  await expect(page.getByText('Has 6 digits after "UK" — UK cattle tags have 12')).toBeVisible()
+  await expect(page.getByText(/Check digit is 3 but should be 4/)).toBeVisible()
+
+  await page.getByRole('tab', { name: 'ScotEID' }).click()
+  await page.getByLabel(L('Main holding (CPH)')).fill('85/123/4567')
+  await page.getByLabel(L('ScotEID username')).fill('demo')
+  await page.getByLabel(L('ScotEID password')).fill('wrong')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByText('ScotEID: Invalid username or password')).toBeVisible()
+  await page.getByLabel(L('ScotEID password')).fill('demo-password')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByText('ScotEID connected')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Sync now' }).click()
+  await expect(page.getByText(/Synced \d+ cattle and 5 events from ScotEID/)).toBeVisible()
+  await expect(page.getByText('On ScotEID but not in HoovesWho (1)')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Date of birth' })).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Select UK523801600001' }).check()
+  await page.getByRole('button', { name: 'Add 1 to herd' }).click()
+  await expect(page.getByText('Added 1 animal from ScotEID')).toBeVisible()
+  await expect(page.getByText('On ScotEID but not in HoovesWho')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Holding register' }).click()
+  await expect(page.getByRole('link', { name: 'UK523801-200788' })).toBeVisible()
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download CSV' }).click()])
+  expect(download.suggestedFilename()).toMatch(/^holding-register-\d{4}\.csv$/)
+})
