@@ -65,6 +65,9 @@ def main():
     apps = api('GET', '/access/apps?per_page=100')
     source = [a for a in apps if args.source.lower() in (a.get('name', '') + ' ' + ' '.join(domains(a))).lower()
               and a.get('name') != APP_NAME]
+    exact = [a for a in source if a.get('name', '').lower() == args.source.lower()]
+    if exact:
+        source = exact  # e.g. the "Ayrenergy" app rather than every *.ayrenergy.com device app
     if len(source) != 1:
         print(f'Expected exactly one Access app matching "{args.source}", found {len(source)}:')
         for a in apps:
