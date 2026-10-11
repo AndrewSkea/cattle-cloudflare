@@ -19,6 +19,7 @@ import { equipment, inventory, parcels, staffRoutes, structures, tasks } from '.
 import financeRoutes from './routes/finance';
 import dashboardRoutes from './routes/dashboard';
 import martRoutes from './routes/mart';
+import feedbackRoutes from './routes/feedback';
 import { compliance, scoteid, scoteidMock } from './routes/compliance';
 import { syncOrkneyMart } from './services/mart/orkney';
 
@@ -75,6 +76,7 @@ app.route('/api/finance', financeRoutes);
 app.route('/api/mart', martRoutes);
 app.route('/api/compliance', compliance);
 app.route('/api/scoteid', scoteid);
+app.route('/api/feedback', feedbackRoutes);
 
 app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 

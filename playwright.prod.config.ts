@@ -7,7 +7,7 @@ export default defineConfig({
   timeout: 45_000,
   reporter: [['list']],
   use: {
-    baseURL: process.env.BASE_URL || 'https://cattle-management-api.andrewskea-as.workers.dev',
+    baseURL: process.env.BASE_URL || 'https://hooveswho.andrewskea.com',
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

@@ -531,6 +531,22 @@ export const scoteidEvents = sqliteTable('scoteid_events', {
   farmTag: index('idx_scoteid_event_farm_tag').on(t.farmId, t.tag),
 }));
 
+// ==================== FEEDBACK ====================
+
+/** Requests from the app's Feedback button. Each becomes a GitHub issue that Claude picks up (see claude-feedback.yml). */
+export const feedback = sqliteTable('feedback', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  kind: text('kind').notNull(), // bug | idea | change
+  message: text('message').notNull(),
+  page: text('page'),
+  issueNumber: integer('issue_number'), // null if GitHub was unreachable or not configured
+  createdAt: createdAt(),
+}, (t) => ({
+  farmCreated: index('idx_feedback_farm_created').on(t.farmId, t.createdAt),
+}));
+
 export type User = typeof users.$inferSelect;
 export type Farm = typeof farms.$inferSelect;
 export type Animal = typeof animals.$inferSelect;

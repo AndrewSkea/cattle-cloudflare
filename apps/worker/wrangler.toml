@@ -2,7 +2,9 @@ name = "cattle-management-api"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+# Only the custom domain is served, so Cloudflare Access (scripts/access-setup.sh) covers every way in.
+workers_dev = false
+preview_urls = false
 routes = [{ pattern = "hooveswho.andrewskea.com", custom_domain = true }]
 
 # Orkney Mart sales reports are checked every 3 hours.
@@ -29,6 +31,7 @@ migrations_dir = "src/db/migrations"
 
 [vars]
 ENVIRONMENT = "production"
+FEEDBACK_REPO = "AndrewSkea/cattle-cloudflare"
 
-# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_FEEDBACK_TOKEN
 # Local development: copy .dev.vars.example to .dev.vars

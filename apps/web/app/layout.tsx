@@ -10,7 +10,6 @@ export const metadata: Metadata = {
   title: { default: 'HoovesWho — Farm management', template: '%s · HoovesWho' },
   description: 'Livestock, land, machinery, people and money — one place to run your farm.',
   applicationName: 'HoovesWho',
-  manifest: '/manifest.webmanifest',
   icons: { apple: '/icons/apple-touch-icon.png' },
   appleWebApp: { capable: true, title: 'HoovesWho', statusBarStyle: 'default' },
 }
@@ -24,6 +23,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en-GB" className={`${sans.variable} ${display.variable}`}>
+      <head>
+        {/* With credentials, so the manifest loads behind Cloudflare Access (Next's metadata can't set crossOrigin). */}
+        <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
+      </head>
       <body className="font-sans">
         <Providers>{children}</Providers>
       </body>

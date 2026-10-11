@@ -40,3 +40,6 @@ apps/web/out
 test-results
 playwright-report
 *.tsbuildinfo
+
+# Claude feedback workflow scratch files
+.feedback

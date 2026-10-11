@@ -13,6 +13,7 @@ import { useAnimalOptions } from '@/lib/queries'
 import { animalLabel, initials } from '@/lib/format'
 import { ROLE_META, speciesInfo } from '@/lib/constants'
 import { Avatar, Badge } from './ui/display'
+import { FeedbackButton } from './feedback'
 import { InstallAppButton } from './install'
 import { Menu, MenuDivider, MenuItem } from './ui/overlay'
 import type { Role } from '@/lib/types'
@@ -221,6 +222,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <kbd className="hidden rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-stone-500 sm:block">⌘K</kbd>
             </button>
             <div className="ml-auto flex items-center gap-2">
+              <FeedbackButton />
               <Menu trigger={
                 <button className="flex items-center gap-2 rounded-full p-0.5 transition hover:ring-4 hover:ring-stone-200/70 focus-ring" aria-label="Account menu">
                   <Avatar name={initials(user?.name, user?.email)} src={user?.avatarUrl} size={32} />

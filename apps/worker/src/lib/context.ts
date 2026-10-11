@@ -17,6 +17,8 @@ export interface Env {
   DEV_AUTH_ENABLED?: string; // local .dev.vars only — never set in production
   SCOTEID_APP_KEY?: string; // vendor key issued by ScotEID; the integration is dormant without it
   SCOTEID_ENDPOINT?: string; // defaults to https://api.scoteid.com/api/ (test: https://api.test.scoteid.com/api)
+  GITHUB_FEEDBACK_TOKEN?: string; // fine-grained token, Issues read/write on FEEDBACK_REPO; feedback is only stored without it
+  FEEDBACK_REPO?: string; // owner/name, defaults to AndrewSkea/cattle-cloudflare
 }
 
 export type Role = 'viewer' | 'worker' | 'manager' | 'owner';

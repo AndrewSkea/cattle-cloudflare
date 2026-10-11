@@ -1,9 +1,43 @@
-import { expect, test } from '@playwright/test'
+import { expect, test as base, request as plainRequest } from '@playwright/test'
 
 /**
  * Read-only production smoke tests. They never sign in or write data.
  *   npx playwright test --config=playwright.prod.config.ts
+ *
+ * The site sits behind Cloudflare Access. With CF_ACCESS_CLIENT_ID/SECRET (a service token) the tests send
+ * it — only to the app's own origin — and also check that requests without it are stopped at Access.
  */
+const ACCESS = process.env.CF_ACCESS_CLIENT_ID
+  ? { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET || '' }
+  : null
+
+const test = base.extend({
+  request: async ({ playwright, baseURL }, use) => {
+    const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: ACCESS ?? {} })
+    await use(ctx)
+    await ctx.dispose()
+  },
+  context: async ({ context, baseURL }, use) => {
+    if (ACCESS) {
+      await context.route(`${new URL(baseURL!).origin}/**`, (route) => route.continue({ headers: { ...route.request().headers(), ...ACCESS } }))
+    }
+    await use(context)
+  },
+})
+
+test('only family members get in: Cloudflare Access guards the site', async ({ baseURL }) => {
+  test.skip(!ACCESS, 'CF_ACCESS_CLIENT_ID not set')
+  const outsider = await plainRequest.newContext({ baseURL })
+  for (const path of ['/', '/dashboard', '/api/health-check']) {
+    const r = await outsider.get(path, { maxRedirects: 0 })
+    expect(r.status(), path).toBe(302)
+    expect(r.headers()['location'], path).toMatch(/cloudflareaccess\.com/)
+  }
+  // The old workers.dev address is switched off, so there is no way round Access.
+  const old = await outsider.get('https://cattle-management-api.andrewskea-as.workers.dev/api/health-check', { maxRedirects: 0 }).catch(() => null)
+  expect(old?.status() === 200 && (await old.text()).includes('"status":"ok"')).toBe(false)
+  await outsider.dispose()
+})
 
 test('API is up, in production mode, and protected', async ({ request }) => {
   const health = await (await request.get('/api/health-check')).json()
@@ -23,7 +57,8 @@ test('Google sign-in redirect is accepted by Google', async ({ request }) => {
   expect(location).toContain(encodeURIComponent('/api/auth/callback/google'))
   expect(start.headers()['set-cookie']).toContain('oauth_state=')
   // An unregistered redirect_uri or client id makes Google answer with an error page.
-  const google = await request.get(location, { maxRedirects: 0 })
+  // (A fresh context, so the Access service token is never sent to Google.)
+  const google = await (await plainRequest.newContext()).get(location, { maxRedirects: 0 })
   expect(google.status(), 'Google rejected the OAuth request').toBeLessThan(400)
   expect(await google.text()).not.toMatch(/redirect_uri_mismatch|invalid_client|deleted_client/)
 })

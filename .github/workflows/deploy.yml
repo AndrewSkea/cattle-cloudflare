@@ -1,0 +1,49 @@
+name: Deploy
+
+# Migrates the remote D1 database, deploys the Worker (app + API) and smoke-tests production.
+# Called by ci.yml (pushes to main) and claude-feedback.yml (after Claude's change passes CI).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to deploy
+        type: string
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://hooveswho.andrewskea.com
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build web app
+        run: pnpm --filter web build
+      - name: Migrate remote D1
+        run: pnpm --filter worker db:migrate
+      - name: Deploy Worker
+        run: pnpm --filter worker run deploy
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Production smoke tests
+        env:
+          # Cloudflare Access service token (scripts/access-setup.sh) so the smoke tests get past Access.
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: npx playwright test --config=playwright.prod.config.ts

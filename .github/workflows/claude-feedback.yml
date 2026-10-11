@@ -1,0 +1,204 @@
+name: Claude feedback
+
+# Feedback sent from the app (POST /api/feedback) arrives as an issue labelled `feedback`, opened by the
+# repository owner's token. Claude implements it and runs the tests here; CI runs again on the result,
+# then it goes straight to main and production. Progress is tracked on the issue with comments and labels:
+#   claude:working → claude:deployed (issue closed) | claude:needs-info (question for the family) | claude:failed
+# An owner comment on the issue (the app's "Send answer", or you on GitHub) runs it again.
+# Runs are serial; an hourly sweep picks up anything a busy queue skipped.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Feedback issue number to (re)run
+        required: true
+
+concurrency:
+  group: claude-feedback
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  pick:
+    # Only the owner's issues and comments: the repository is public and anyone can open an issue.
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.issue.user.login == github.repository_owner &&
+        contains(github.event.issue.labels.*.name, 'feedback')) ||
+      (github.event_name == 'issue_comment' && github.event.comment.user.login == github.repository_owner &&
+        !github.event.issue.pull_request && github.event.issue.state == 'open' &&
+        contains(github.event.issue.labels.*.name, 'feedback') && !contains(github.event.issue.labels.*.name, 'claude:working'))
+    runs-on: ubuntu-latest
+    outputs:
+      issue: ${{ steps.pick.outputs.issue }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_ISSUE: ${{ inputs.issue }}
+        run: |
+          case "$EVENT" in
+            issues|issue_comment) n="$EVENT_ISSUE" ;;
+            workflow_dispatch) n="$INPUT_ISSUE" ;;
+            schedule)
+              n=$(gh issue list --label feedback --state open --limit 100 --json number,labels,author --jq \
+                '[.[] | select(.author.login == env.OWNER) | select([.labels[].name | startswith("claude:")] | any | not)] | sort_by(.number) | .[0].number // empty') ;;
+          esac
+          echo "Picked issue: ${n:-none}"
+          echo "issue=$n" >> "$GITHUB_OUTPUT"
+
+  implement:
+    needs: pick
+    if: needs.pick.outputs.issue != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+      sha: ${{ steps.check.outputs.sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ needs.pick.outputs.issue }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Mark the issue as in progress
+        run: |
+          for l in "claude:working|7057ff|Claude is implementing this" "claude:needs-info|fbca04|Claude needs more information" \
+                   "claude:failed|d73a4a|Claude could not finish this automatically" "claude:deployed|0e8a16|Implemented and live"; do
+            IFS='|' read -r name color desc <<< "$l"
+            gh label create "$name" --color "$color" --description "$desc" --force
+          done
+          gh issue edit "$ISSUE" --add-label claude:working --remove-label claude:needs-info --remove-label claude:failed
+          gh issue comment "$ISSUE" --body "🤖 Claude has started on this. [Follow the run]($RUN_URL)"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare local environment
+        run: |
+          cp apps/worker/.dev.vars.example apps/worker/.dev.vars
+          npx playwright install --with-deps chromium
+          mkdir -p .feedback
+          gh issue view "$ISSUE" --json title,body,comments --jq '
+            "# " + .title + "\n\n" + .body + "\n\n" +
+            ([.comments[] | select(.author.login == "github-actions" and (.body | contains("claude-question"))) | .body] as $q
+             | if ($q | length) > 0 then "## Claude asked earlier\n\n" + $q[-1] + "\n\n" else "" end) +
+            ([.comments[] | select(.author.login != "github-actions") | "## Follow-up from the family\n\n" + .body] | join("\n\n"))
+          ' > .feedback/issue.md
+          cat .feedback/issue.md
+      - name: Claude implements the request
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          claude_args: >-
+            --max-turns 250
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep,TodoWrite,WebFetch,WebSearch"
+          prompt: |
+            You maintain HoovesWho, a farm management app used by one family. A family member asked for the change in
+            .feedback/issue.md (GitHub issue #${{ needs.pick.outputs.issue }}, with any follow-up answers). Implement it end to end.
+
+            - Read CLAUDE.md first and follow its architecture and conventions.
+            - Keep the change focused on what was asked; don't refactor unrelated code.
+            - Database: never edit or delete existing files in apps/worker/src/db/migrations. Change schema.ts and run
+              `pnpm --filter worker db:generate` for a new migration. Additive only: no dropping tables or columns, no deleting data.
+            - Don't touch .github/ or weaken auth, roles or farm scoping.
+            - Add or extend a test in e2e/app.spec.ts that covers the change.
+            - Before finishing, all of these must pass (fix anything that fails, including tests you didn't write):
+                pnpm typecheck
+                pnpm --filter web build
+                npx playwright test        # resets the local D1 and starts wrangler dev itself; takes several minutes
+            - Do not commit, push or open pull requests; the workflow does that after you finish.
+            - When done, write .feedback/summary.md: 2–6 short bullet points in plain language for a non-technical
+              family member, saying what changed and where to find it in the app. Then write .feedback/title.txt: a
+              conventional commit subject (e.g. "feat(web): show calf count on the animal list"), one line.
+            - If the request is too unclear to do well, or needs something you can't do here (new accounts or API keys,
+              deleting data, paid services), make no code changes. Instead write a short, friendly question or explanation
+              for the family to .feedback/question.md, in plain language without jargon.
+      - name: Check, commit and push
+        id: check
+        run: bash scripts/feedback/check.sh
+
+  test:
+    needs: implement
+    if: needs.implement.outputs.result == 'ready'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.implement.outputs.sha }}
+    secrets: inherit
+
+  promote:
+    needs: [pick, implement, test]
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.promote.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fast-forward main (rebasing if main moved on)
+        id: promote
+        env:
+          SHA: ${{ needs.implement.outputs.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$SHA"
+          if ! git merge-base --is-ancestor origin/main "$SHA"; then
+            git checkout -q "$SHA"
+            git rebase origin/main
+            SHA=$(git rev-parse HEAD)
+          fi
+          git push origin "$SHA:refs/heads/main"
+          git push origin --delete "claude/feedback-${{ needs.pick.outputs.issue }}" || true
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: promote
+    uses: ./.github/workflows/deploy.yml
+    with:
+      ref: ${{ needs.promote.outputs.sha }}
+    secrets: inherit
+
+  report:
+    needs: [pick, implement, test, promote, deploy]
+    if: always() && needs.pick.outputs.issue != '' && (needs.implement.result != 'success' || needs.implement.outputs.result == 'ready')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ needs.pick.outputs.issue }}
+      SHA: ${{ needs.promote.outputs.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      STAGES: implement=${{ needs.implement.result }} test=${{ needs.test.result }} promote=${{ needs.promote.result }} deploy=${{ needs.deploy.result }}
+    steps:
+      - if: needs.deploy.result == 'success'
+        run: |
+          gh issue comment "$ISSUE" --body "✅ **Live now** at https://hooveswho.andrewskea.com — commit $SHA. Refresh the app to see it."
+          gh issue edit "$ISSUE" --add-label claude:deployed --remove-label claude:working
+          gh issue close "$ISSUE" --reason completed
+      - if: needs.deploy.result != 'success'
+        run: |
+          stage=$(tr ' ' '\n' <<< "$STAGES" | grep -v '=success' | head -1)
+          gh issue comment "$ISSUE" --body "❌ This didn't make it live (stopped at \`${stage:-unknown}\`). Production is unchanged. [See the run]($RUN_URL) — comment here to have Claude try again."
+          gh issue edit "$ISSUE" --add-label claude:failed --remove-label claude:working

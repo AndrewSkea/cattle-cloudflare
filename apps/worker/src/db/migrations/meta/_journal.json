@@ -15,6 +15,13 @@
       "when": 1791625002217,
       "tag": "0001_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791729048735,
+      "tag": "0002_feedback",
+      "breakpoints": true
     }
   ]
 }

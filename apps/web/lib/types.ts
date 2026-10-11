@@ -424,3 +424,19 @@ export interface MartOverview {
   reports: number
   latestReport: string | null
 }
+
+export type FeedbackStatus = 'saved' | 'queued' | 'working' | 'needs_info' | 'failed' | 'live'
+
+export interface FeedbackItem {
+  id: number
+  kind: 'bug' | 'idea' | 'change'
+  message: string
+  page: string | null
+  issueNumber: number | null
+  issueUrl: string | null
+  status: FeedbackStatus
+  question: string | null
+  userId: number
+  userName: string
+  createdAt: string
+}

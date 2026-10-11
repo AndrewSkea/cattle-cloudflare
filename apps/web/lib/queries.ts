@@ -5,7 +5,7 @@ import { api, ApiError, getData } from './api'
 import { useToast } from '@/components/ui/overlay'
 import type {
   AnimalListItem, AnimalOption, BirthRecord, BreedingRecord, Equipment, HealthRecord, InventoryItem, Member,
-  Parcel, StaffMember, Structure, Task, Transaction,
+  FeedbackItem, Parcel, StaffMember, Structure, Task, Transaction,
 } from './types'
 
 export const useList = <T,>(key: string, path: string, enabled = true) =>
@@ -23,6 +23,7 @@ export const useStaff = () => useList<StaffMember>('staff', '/api/staff')
 export const useHealth = () => useList<HealthRecord>('health', '/api/health')
 export const useBreeding = () => useList<BreedingRecord>('breeding', '/api/breeding')
 export const useBirths = () => useList<BirthRecord>('births', '/api/births')
+export const useFeedback = (enabled = true) => useList<FeedbackItem>('feedback', '/api/feedback', enabled)
 export const useTransactions = (enabled = true) => useList<Transaction>('finance', '/api/finance/transactions', enabled)
 
 /**

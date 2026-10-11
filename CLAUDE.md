@@ -4,10 +4,17 @@ Full-stack farm management: livestock (multi-species) with family trees, health,
 equipment servicing, inventory, tasks, finances, multi-user farms with roles, Orkney Mart sale import and
 cattle traceability (ScotEID reporting deadlines, ear tag checks, holding register, ScotEID reconciliation).
 
-**Production:** https://hooveswho.andrewskea.com (Worker custom domain; also https://cattle-management-api.andrewskea-as.workers.dev).
-One Worker serves the app and `/api`. `https://cattle-management.pages.dev` redirects to the workers.dev URL.
-CI (`.github/workflows/ci.yml`): every push/PR typechecks, builds and runs the e2e suite; pushes to `main` then migrate
-remote D1, deploy, and run the production smoke tests.
+**Production:** https://hooveswho.andrewskea.com (Worker custom domain only — workers.dev and preview URLs are off).
+One Worker serves the app and `/api`. `https://cattle-management.pages.dev` redirects there.
+**Family only:** the domain is behind Cloudflare Access using the same policy as the ayrenergy site
+(`scripts/access-setup.py` sets it up, plus a "HoovesWho CI" service token for the smoke tests). Google sign-in in the
+app still decides which farm and role a person gets.
+CI (`.github/workflows/ci.yml`): every push/PR typechecks, builds and runs the e2e suite; pushes to `main` then run
+`deploy.yml` (migrate remote D1, deploy, production smoke tests through Access).
+**Feedback → Claude → live:** the app's Feedback button (`routes/feedback.ts`) opens a GitHub issue labelled `feedback`.
+`.github/workflows/claude-feedback.yml` has Claude Code (on the owner's subscription) implement it and run the tests,
+`scripts/feedback/check.sh` blocks risky changes (workflow files, edited or destructive migrations), CI runs, then it is
+pushed to `main` and deployed with no human approval. Progress is commented on the issue and shown in the app.
 
 ## Architecture
 
@@ -96,9 +103,12 @@ where calving/service rows pointed at the cow's latest calf instead of the cow).
 ## Secrets (wrangler secret put)
 
 `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
-Google OAuth redirect URIs (one per domain): `https://hooveswho.andrewskea.com/api/auth/callback/google`,
-`https://cattle-management-api.andrewskea-as.workers.dev/api/auth/callback/google`.
-GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (both in Bitwarden Secrets Manager).
+Google OAuth redirect URI: `https://hooveswho.andrewskea.com/api/auth/callback/google`.
+Worker secret `GITHUB_FEEDBACK_TOKEN`: fine-grained GitHub token, this repo only, Issues read/write (without it feedback
+is only stored in D1).
+GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (both in Bitwarden Secrets Manager),
+`CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` (set by
+`scripts/access-setup.py`).
 
 ## Conventions
 

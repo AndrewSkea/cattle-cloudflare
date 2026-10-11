@@ -453,3 +453,23 @@ test('traceability: ear tag checks, ScotEID connection and reconciliation, holdi
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download CSV' }).click()])
   expect(download.suggestedFilename()).toMatch(/^holding-register-\d{4}\.csv$/)
 })
+
+test('feedback: send a request from any page and see it listed', async ({ request }) => {
+  await page.goto('/livestock')
+  await page.getByRole('button', { name: 'Send feedback' }).click()
+  const sheet = dialog(page, 'Feedback')
+  await sheet.getByRole('radio', { name: 'New feature' }).click()
+  const tooShort = await page.request.post('/api/feedback', { data: { kind: 'bug', message: 'short' } })
+  expect(tooShort.status()).toBe(422)
+  expect((await tooShort.json()).error).toContain('more detail')
+  await sheet.getByLabel(L('Tell us about it')).fill('Show the number of calves each cow has had on the animal list')
+  await sheet.getByRole('button', { name: 'Send to Claude' }).click()
+  // No GitHub token locally, so it is stored but not sent on.
+  await expect(page.getByText('Thanks — your feedback is saved')).toBeVisible()
+  await expect(sheet.getByText('Show the number of calves each cow has had')).toBeVisible()
+  await expect(sheet.getByText('Saved', { exact: true })).toBeVisible()
+  const list = await (await page.request.get('/api/feedback')).json()
+  expect(list.data[0]).toMatchObject({ kind: 'idea', page: '/livestock', status: 'saved', issueNumber: null })
+  expect((await page.request.post(`/api/feedback/${list.data[0].id}/reply`, { data: { message: 'more' } })).status()).toBe(409)
+  expect((await request.get('/api/feedback')).status()).toBe(401)
+})
