@@ -9,6 +9,10 @@ const display = Fraunces({ subsets: ['latin'], variable: '--font-display', displ
 export const metadata: Metadata = {
   title: { default: 'HoovesWho — Farm management', template: '%s · HoovesWho' },
   description: 'Livestock, land, machinery, people and money — one place to run your farm.',
+  applicationName: 'HoovesWho',
+  manifest: '/manifest.webmanifest',
+  icons: { apple: '/icons/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'HoovesWho', statusBarStyle: 'default' },
 }
 
 export const viewport: Viewport = {

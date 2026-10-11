@@ -44,6 +44,10 @@ Key decisions:
 - **Every query is scoped by `farm_id`.** Tags are unique per farm.
 - **Money has one source of truth:** `transactions`. Sales, purchases, vet costs and equipment costs create
   linked transactions (`source`, `sourceId`) kept in sync by `services/finance.ts`; those are read-only in Finance.
+- **Installable app (PWA):** `public/manifest.webmanifest`, icons in `public/icons/` (rendered from `app/icon.svg`),
+  `public/sw.js` (cache-first for `/_next/static` and icons, network-first for pages with `/offline` fallback; never
+  caches `/api`). `lib/install.ts` registers it and keeps Chrome's install prompt for the sidebar "Install app" button;
+  Safari users get Add to Home Screen / Add to Dock instructions. Bump `VERSION` in `sw.js` to drop old caches.
 - Dynamic pages use query strings (`/livestock/view?id=1`) because of static export.
 - **Orkney Mart:** reports come from the mart's WordPress events API (`/wp-json/tribe/events/v1/events?categories=sales-report`).
   Parsed lots/averages are shared tables (`mart_reports`, `mart_lots`, `mart_averages`); each farm's seller names

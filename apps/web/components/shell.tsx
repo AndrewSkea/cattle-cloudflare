@@ -13,6 +13,7 @@ import { useAnimalOptions } from '@/lib/queries'
 import { animalLabel, initials } from '@/lib/format'
 import { ROLE_META, speciesInfo } from '@/lib/constants'
 import { Avatar, Badge } from './ui/display'
+import { InstallAppButton } from './install'
 import { Menu, MenuDivider, MenuItem } from './ui/overlay'
 import type { Role } from '@/lib/types'
 
@@ -118,7 +119,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           )
         })}
       </nav>
-      <div className="border-t border-white/10 p-3">
+      <div className="space-y-0.5 border-t border-white/10 p-3">
+        <InstallAppButton className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-brand-100/80 transition hover:bg-white/5 hover:text-white" />
         <Link href="/settings" onClick={onNavigate} className={cn('flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition',
           pathname.startsWith('/settings') ? 'bg-white/10 text-white' : 'text-brand-100/80 hover:bg-white/5 hover:text-white')}>
           <Settings className="size-[18px] text-brand-300/80" /> Farm settings

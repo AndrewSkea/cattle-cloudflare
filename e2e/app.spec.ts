@@ -63,6 +63,16 @@ test('public pages and security guards', async ({ request }) => {
   const csrf = await request.post('/api/tasks', { headers: { Origin: 'https://evil.example' }, data: { title: 'x' } })
   expect(csrf.status()).toBe(403)
   expect((await request.get('/api/nope')).status()).toBe(401)
+
+  // Installable app: manifest, icons and service worker are served, and Chrome reports no installability errors.
+  const manifest = await (await request.get('/manifest.webmanifest')).json()
+  expect(manifest).toMatchObject({ short_name: 'HoovesWho', display: 'standalone', start_url: '/dashboard' })
+  for (const icon of manifest.icons) expect((await request.get(icon.src)).status()).toBe(200)
+  expect((await request.get('/sw.js')).status()).toBe(200)
+  const cdp = await page.context().newCDPSession(page)
+  expect((await cdp.send('Page.getAppManifest')).errors).toEqual([])
+  expect((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors).toEqual([])
+  await cdp.detach()
 })
 
 test('owner sees the dashboard with the imported herd', async () => {
