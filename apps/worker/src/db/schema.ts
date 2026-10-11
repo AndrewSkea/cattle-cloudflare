@@ -156,6 +156,22 @@ export const animals = sqliteTable('animals', {
   sire: index('idx_animal_sire').on(t.sireId),
 }));
 
+// Earlier management numbers, so an animal can still be found by them (calves get "97/26", then their own
+// number when they join the herd as cows).
+export const managementTagHistory = sqliteTable('management_tag_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  animalId: integer('animal_id').notNull().references(() => animals.id, { onDelete: 'cascade' }),
+  previousTag: text('previous_tag').notNull(),
+  newTag: text('new_tag'),
+  changedOn: text('changed_on').notNull(),
+  changedBy: integer('changed_by'),
+  createdAt: createdAt(),
+}, (t) => ({
+  animal: index('idx_mgmt_history_animal').on(t.animalId),
+  farm: index('idx_mgmt_history_farm').on(t.farmId),
+}));
+
 export const healthRecords = sqliteTable('health_records', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),

@@ -43,3 +43,7 @@ playwright-report
 
 # Claude feedback workflow scratch files
 .feedback
+
+# The farm's own spreadsheets (private; the repo is public)
+seed_data/
+__pycache__/

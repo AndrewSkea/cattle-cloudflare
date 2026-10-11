@@ -77,6 +77,7 @@ export interface AnimalDetail extends Animal {
   structure: { id: number; name: string } | null
   offspringCount: number
   birthCount: number
+  tagHistory: { previousTag: string; newTag: string | null; changedOn: string }[]
 }
 
 export interface AnimalOption {
@@ -89,6 +90,7 @@ export interface AnimalOption {
   status: string
   dob: string | null
   breed: string | null
+  formerTags: string | null
 }
 
 export interface HealthRecord {

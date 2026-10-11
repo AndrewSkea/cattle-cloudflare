@@ -9,7 +9,7 @@ import { Picker, type PickerOption } from '@/components/ui/picker'
 import { api, useAnimalOptions, useParcels, useSave, useStructures } from '@/lib/queries'
 import { ApiError } from '@/lib/api'
 import { BIRTH_EASE, BREEDS, HEALTH_TYPES, SPECIES, speciesInfo } from '@/lib/constants'
-import { addDaysISO, animalLabel, fmtDate, todayISO } from '@/lib/format'
+import { addDaysISO, animalLabel, calfNumber, fmtAge, fmtDate, isYoungStockNumber, nextHerdNumber, todayISO } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import type { Animal, AnimalOption, BirthRecord, BreedingRecord, HealthRecord, Species, WeightRecord } from '@/lib/types'
 
@@ -19,7 +19,7 @@ export function animalOptions(list: AnimalOption[], filter?: (a: AnimalOption) =
   return list
     .filter((a) => (filter ? filter(a) : true))
     .sort((a, b) => (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) || (a.managementTag || a.tagNo).localeCompare(b.managementTag || b.tagNo, undefined, { numeric: true }))
-    .map((a) => ({ value: a.id, label: animalLabel(a), sub: [a.managementTag ? a.tagNo : null, a.breed, a.status !== 'active' ? a.status : null].filter(Boolean).join(' · ') }))
+    .map((a) => ({ value: a.id, label: animalLabel(a), sub: [a.managementTag ? a.tagNo : null, a.formerTags ? `was ${a.formerTags}` : null, a.breed, a.status !== 'active' ? a.status : null].filter(Boolean).join(' · ') }))
 }
 
 function SheetFooter({ formId, onClose, busy, label = 'Save' }: { formId: string; onClose: () => void; busy?: boolean; label?: string }) {
@@ -308,7 +308,9 @@ export function BirthSheet({ open, onClose, record, damId }: { open: boolean; on
   const [sex, setSex] = useState<'female' | 'male' | ''>((record?.sex as any) || '')
   const [register, setRegister] = useState(!record)
   const [error, setError] = useState<string | null>(null)
+  const [date, setDate] = useState(record?.date ?? todayISO())
   const damA = options.find((a) => a.id === dam)
+  const suggestedNumber = damA ? calfNumber(damA.managementTag, date, options.map((a) => a.managementTag)) : ''
   const word = damA?.species === 'sheep' ? 'lamb' : damA?.species === 'pig' ? 'piglet' : damA?.species === 'goat' ? 'kid' : damA?.species === 'horse' ? 'foal' : 'calf'
   const save = useSave((body: any) => record ? api.put(`/api/births/${record.id}`, body) : api.post('/api/births', body), {
     invalidate: LIVESTOCK, success: record ? 'Birth updated' : 'Birth recorded', silentError: true, onSuccess: onClose,
@@ -329,7 +331,7 @@ export function BirthSheet({ open, onClose, record, damId }: { open: boolean; on
       }}>
         <FormGrid>
           <Field label="Mother" required><Picker label="Mother" options={animalOptions(options, (a) => a.sex === 'female' && (a.status === 'active' || a.id === record?.damId))} value={dam} onChange={setDam} required /></Field>
-          <TextField label="Date of birth" name="date" type="date" required max={todayISO()} defaultValue={record?.date ?? todayISO()} />
+          <TextField label="Date of birth" name="date" type="date" required max={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
           <Field label="Outcome"><Segmented value={outcome} onChange={setOutcome} options={[{ value: 'alive', label: 'Alive' }, { value: 'stillborn', label: 'Stillborn' }, { value: 'died', label: 'Died' }]} /></Field>
           <Field label="Sex"><Segmented value={(sex || 'unknown') as any} onChange={(v: string) => setSex(v === 'unknown' ? '' : v as any)} options={[{ value: 'female', label: 'Female' }, { value: 'male', label: 'Male' }, { value: 'unknown', label: 'Unknown' }]} /></Field>
           <SelectField label="Ease" name="ease" defaultValue={record?.ease ?? 'unassisted'} options={BIRTH_EASE} />
@@ -343,7 +345,8 @@ export function BirthSheet({ open, onClose, record, damId }: { open: boolean; on
             {register && (
               <FormGrid>
                 <TextField label="Tag / ID" name="offTagNo" required placeholder="Official tag" />
-                <TextField label="Management tag" name="offManagementTag" />
+                <TextField key={suggestedNumber} label="Management tag" name="offManagementTag" defaultValue={suggestedNumber}
+                  hint={suggestedNumber ? "Mother's number and year; for twins use -A and -B" : undefined} />
                 <TextField label="Name" name="offName" />
                 <TextField label="Breed" name="offBreed" placeholder={damA?.breed || ''} hint="Defaults to the mother's breed" />
               </FormGrid>
@@ -425,3 +428,78 @@ export function useAnimalMap() {
   return useMemo(() => new Map(data.map((a) => [a.id, a])), [data])
 }
 
+
+// ============================ RENUMBER ============================
+
+/**
+ * Give young stock their own herd numbers (e.g. heifers "97/24" or "12.24" joining the cows). Shows the selected
+ * animals, or else every heifer over a year old that still has a calf or heifer number.
+ */
+export function RenumberSheet({ open, onClose, animalIds }: { open: boolean; onClose: () => void; animalIds?: number[] }) {
+  const { data: options = [] } = useAnimalOptions()
+  const rows = useMemo(() => {
+    const picked = animalIds?.length
+      ? options.filter((a) => animalIds.includes(a.id))
+      : options.filter((a) => a.status === 'active' && a.sex === 'female' && isYoungStockNumber(a.managementTag)
+        && a.dob && (Date.now() - Date.parse(a.dob)) / 2.63e9 >= 12)
+    return picked.sort((a, b) => (a.dob || '').localeCompare(b.dob || '') || a.tagNo.localeCompare(b.tagNo))
+  }, [options, animalIds])
+  const [values, setValues] = useState<Record<number, string>>({})
+  // Heifers about two years old are the ones joining the cows; tick those to start with.
+  const [include, setInclude] = useState<Set<number>>(() => new Set())
+  const [touched, setTouched] = useState(false)
+  const ticked = touched ? include : new Set(rows.filter((a) => animalIds?.length || (a.dob && (Date.now() - Date.parse(a.dob)) / 2.63e9 >= 22)).map((a) => a.id))
+  const toggle = (id: number) => { const n = new Set(ticked); if (n.has(id)) n.delete(id); else n.add(id); setInclude(n); setTouched(true) }
+  const [start, setStart] = useState<string>('')
+  const [date, setDate] = useState(todayISO())
+  const [error, setError] = useState<string | null>(null)
+  const next = nextHerdNumber(options)
+  const save = useSave((body: any) => api.post<{ changed: number }>('/api/animals/bulk/renumber', body), {
+    invalidate: LIVESTOCK, success: 'Numbers updated', silentError: true, onSuccess: onClose,
+  })
+  const fill = () => {
+    let n = Number(start || next)
+    const v: Record<number, string> = {}
+    for (const a of rows) if (ticked.has(a.id)) v[a.id] = String(n++)
+    setValues(v)
+  }
+  const changes = rows.filter((a) => ticked.has(a.id) && values[a.id]?.trim()).map((a) => ({ id: a.id, managementTag: values[a.id].trim() }))
+  return (
+    <Sheet open={open} onClose={onClose} wide title="Give animals new numbers"
+      description="Their old numbers are kept, so you can still find them by either."
+      footer={<SheetFooter formId="renumber-form" onClose={onClose} busy={save.isPending} label={changes.length ? `Renumber ${changes.length}` : 'Renumber'} />}>
+      <form id="renumber-form" className="space-y-5" onSubmit={(e) => {
+        e.preventDefault()
+        if (!changes.length) return setError('Enter at least one new number')
+        save.mutate({ date, changes }, { onError: (err) => setError(err.message) })
+      }}>
+        {rows.length === 0 ? (
+          <p className="text-sm text-stone-600">No heifers over a year old are waiting for their own number. Select animals in the list to renumber others.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Start from"><Input type="number" min={1} aria-label="Start from" value={start} placeholder={String(next)} onChange={(e) => setStart(e.target.value)} className="w-28" /></Field>
+              <Button type="button" variant="secondary" onClick={fill} disabled={!ticked.size}>Number the {ticked.size} ticked in order</Button>
+              <Field label="Date of change"><Input type="date" aria-label="Date of change" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} /></Field>
+            </div>
+            <div className="divide-y divide-stone-100 rounded-xl ring-1 ring-stone-200">
+              {rows.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 px-3 py-2">
+                  <input type="checkbox" className="size-4 rounded border-stone-300 text-brand-600 focus-ring" aria-label={`Renumber ${a.tagNo}`}
+                    checked={ticked.has(a.id)} onChange={() => toggle(a.id)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-stone-900">{a.managementTag || a.tagNo}</p>
+                    <p className="truncate text-xs text-stone-500">{a.tagNo}{a.breed ? ` · ${a.breed}` : ''}{a.dob ? ` · ${fmtAge((Date.now() - Date.parse(a.dob)) / 2.63e9)}` : ''}</p>
+                  </div>
+                  <Input aria-label={`New number for ${a.tagNo}`} className="w-28" value={values[a.id] ?? ''} placeholder="New no." disabled={!ticked.has(a.id)}
+                    onChange={(e) => setValues((v) => ({ ...v, [a.id]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <FormError error={error} />
+      </form>
+    </Sheet>
+  )
+}

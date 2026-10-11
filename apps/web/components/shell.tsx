@@ -143,8 +143,8 @@ function QuickFind({ open, onClose }: { open: boolean; onClose: () => void }) {
   const results = useMemo(() => {
     const s = q.trim().toLowerCase()
     const pageHits = pages.filter((p) => !s || p.label.toLowerCase().includes(s)).map((p) => ({ key: p.href, label: p.label, sub: 'Page', href: p.href, emoji: null as string | null }))
-    const animalHits = s ? animals.filter((a) => `${a.tagNo} ${a.managementTag || ''} ${a.name || ''} ${a.breed || ''}`.toLowerCase().includes(s)).slice(0, 12)
-      .map((a) => ({ key: `a${a.id}`, label: animalLabel(a), sub: `${a.tagNo}${a.status !== 'active' ? ` · ${a.status}` : ''}`, href: `/livestock/view?id=${a.id}`, emoji: speciesInfo(a.species).emoji })) : []
+    const animalHits = s ? animals.filter((a) => `${a.tagNo} ${a.managementTag || ''} ${a.name || ''} ${a.breed || ''} ${a.formerTags || ''}`.toLowerCase().includes(s)).slice(0, 12)
+      .map((a) => ({ key: `a${a.id}`, label: animalLabel(a), sub: `${a.tagNo}${a.formerTags ? ` · was ${a.formerTags}` : ''}${a.status !== 'active' ? ` · ${a.status}` : ''}`, href: `/livestock/view?id=${a.id}`, emoji: speciesInfo(a.species).emoji })) : []
     return [...animalHits, ...pageHits].slice(0, 16)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, animals])

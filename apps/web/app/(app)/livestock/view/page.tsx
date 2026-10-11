@@ -151,7 +151,9 @@ function AnimalView() {
               <div className="p-5">
                 <DescriptionList items={[
                   { label: 'Official tag', value: a.tagNo },
-                  { label: 'Management tag', value: a.managementTag },
+                  { label: 'Management tag', value: a.tagHistory.length
+                    ? <>{a.managementTag || '—'}<span className="block text-xs font-normal text-stone-500">Previously {a.tagHistory.map((h) => `${h.previousTag} (until ${fmtDate(h.changedOn)})`).join(', ')}</span></>
+                    : a.managementTag },
                   { label: 'Sex', value: `${a.sex === 'female' ? 'Female' : 'Male'}${a.castrated ? ' (castrated)' : ''}` },
                   { label: 'Colour', value: a.colour },
                   { label: 'Frame size', value: a.size, hidden: a.species !== 'cattle' },

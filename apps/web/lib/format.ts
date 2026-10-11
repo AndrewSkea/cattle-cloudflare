@@ -91,3 +91,30 @@ export function downloadUrl(href: string) {
   a.click()
   a.remove()
 }
+
+/**
+ * Management numbers. Cows carry their own number (97); calves carry their mother's number and birth year
+ * ("97/26", twins "97/26-A" and "97/26-B") until they're given their own number as a cow.
+ */
+export function calfNumber(damNumber: string | null | undefined, dateISO: string, taken: Iterable<string | null | undefined>): string {
+  if (!damNumber) return ''
+  const base = `${damNumber}/${dateISO.slice(2, 4)}`
+  const used = new Set([...taken].filter(Boolean).map((t) => t!.toLowerCase()))
+  if (!used.has(base.toLowerCase()) && !used.has(`${base}-a`.toLowerCase())) return base
+  for (const s of 'BCDEFGH') if (!used.has(`${base}-${s}`.toLowerCase())) return `${base}-${s}`
+  return base
+}
+
+/** The next unused whole number after the highest one the farm has ever used. */
+export function nextHerdNumber(animals: { managementTag: string | null; formerTags?: string | null }[]): number {
+  let max = 0
+  for (const a of animals) {
+    for (const t of [a.managementTag, ...(a.formerTags || '').split(' ')]) if (t && /^\d+$/.test(t)) max = Math.max(max, Number(t))
+  }
+  return max + 1
+}
+
+/** True for numbers that still need replacing with a cow's own number: calf numbers and "N.24" heifer numbers. */
+export function isYoungStockNumber(tag: string | null | undefined): boolean {
+  return !tag || /\//.test(tag) || /^\d+\.\d{2}$/.test(tag)
+}

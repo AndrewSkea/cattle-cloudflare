@@ -3,7 +3,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
 import {
@@ -164,6 +164,8 @@ animals.get('/options', async (c) => {
   const rows = await c.get('db').select({
     id: schema.animals.id, tagNo: schema.animals.tagNo, managementTag: schema.animals.managementTag, name: schema.animals.name,
     sex: schema.animals.sex, species: schema.animals.species, status: schema.animals.status, dob: schema.animals.dob, breed: schema.animals.breed,
+    // Spelled out: drizzle leaves columns unqualified here, which would bind both sides to the subquery's table.
+    formerTags: sql<string | null>`(SELECT group_concat(h.previous_tag, ' ') FROM management_tag_history h WHERE h.animal_id = animals.id)`,
   }).from(schema.animals).where(eq(schema.animals.farmId, s.farmId)).all();
   return c.json({ data: rows });
 });
@@ -278,6 +280,42 @@ async function assertAllInFarm(c: any, farmId: number, ids: number[]) {
   if (found.length !== new Set(ids).size) throw new HttpError(422, 'Some selected animals were not found');
 }
 
+/**
+ * Give animals new management numbers in one go (e.g. heifers "97/24" joining the herd as cows with their own
+ * numbers). Old numbers are kept in management_tag_history so the animals can still be found by them.
+ */
+animals.post('/bulk/renumber', async (c) => {
+  const s = farmSession(c);
+  const db = c.get('db');
+  const data = await body(c, z.object({
+    date: isoDate.optional(),
+    changes: z.array(z.object({ id: z.number().int().positive(), managementTag: reqText(50) })).min(1).max(500),
+  }));
+  const ids = data.changes.map((x) => x.id);
+  await assertAllInFarm(c, s.farmId, ids);
+  const wanted = data.changes.map((x) => x.managementTag.toLowerCase());
+  const dupe = wanted.find((t, i) => wanted.indexOf(t) !== i);
+  if (dupe) throw new HttpError(422, `Number ${dupe} is given to more than one animal`);
+  const current = await db.select({ id: schema.animals.id, tagNo: schema.animals.tagNo, managementTag: schema.animals.managementTag, status: schema.animals.status })
+    .from(schema.animals).where(eq(schema.animals.farmId, s.farmId)).all();
+  const moving = new Set(ids);
+  const taken = new Map(current.filter((a) => a.status === 'active' && a.managementTag && !moving.has(a.id)).map((a) => [a.managementTag!.toLowerCase(), a]));
+  const clash = data.changes.find((x) => taken.has(x.managementTag.toLowerCase()));
+  if (clash) throw new HttpError(409, `Number ${clash.managementTag} is already used by ${taken.get(clash.managementTag.toLowerCase())!.tagNo}`);
+  const byId = new Map(current.map((a) => [a.id, a]));
+  const changed = data.changes.filter((x) => byId.get(x.id)!.managementTag !== x.managementTag);
+  const day = data.date ?? today();
+  const stmts: any[] = [];
+  for (const x of changed) {
+    const prev = byId.get(x.id)!.managementTag;
+    stmts.push(db.update(schema.animals).set({ managementTag: x.managementTag, updatedAt: now() }).where(eq(schema.animals.id, x.id)));
+    if (prev) stmts.push(db.insert(schema.managementTagHistory).values({ farmId: s.farmId, animalId: x.id, previousTag: prev, newTag: x.managementTag, changedOn: day, changedBy: s.userId }));
+  }
+  if (stmts.length) await db.batch(stmts as [any, ...any[]]);
+  if (changed.length) await logActivity(c, 'updated', 'animal', null, `Renumbered ${changed.length} animal${changed.length === 1 ? '' : 's'}`);
+  return c.json({ data: { changed: changed.length } });
+});
+
 animals.post('/bulk/move', async (c) => {
   const s = farmSession(c);
   const data = await body(c, z.object({ ids: bulkIds, parcelId: optId, structureId: optId, date: isoDate.default(today()), notes: optText(500) }));
@@ -327,12 +365,14 @@ animals.get('/:id', async (c) => {
     db.select({ id: schema.birthRecords.id }).from(schema.birthRecords).where(eq(schema.birthRecords.damId, id)).all(),
     db.select({ id: schema.animals.id }).from(schema.animals).where(and(eq(schema.animals.farmId, s.farmId), a.sex === 'female' ? eq(schema.animals.damId, id) : eq(schema.animals.sireId, id))).all(),
   ]);
+  const tagHistory = await db.select({ previousTag: schema.managementTagHistory.previousTag, newTag: schema.managementTagHistory.newTag, changedOn: schema.managementTagHistory.changedOn })
+    .from(schema.managementTagHistory).where(eq(schema.managementTagHistory.animalId, id)).orderBy(desc(schema.managementTagHistory.changedOn), desc(schema.managementTagHistory.id)).all();
   const age = ageMonths(a.dob, a.birthYear);
   const brief = (x: schema.Animal | null | undefined) => x ? { id: x.id, tagNo: x.tagNo, managementTag: x.managementTag, name: x.name, breed: x.breed } : null;
   return c.json({
     data: {
       ...a, ageMonths: age, category: classify(a, age, births.length > 0 || (a.sex === 'female' && offspring.length > 0)),
-      dam: brief(dam), sire: brief(sire), parcel, structure, offspringCount: offspring.length, birthCount: births.length,
+      dam: brief(dam), sire: brief(sire), parcel, structure, offspringCount: offspring.length, birthCount: births.length, tagHistory,
     },
   });
 });
@@ -393,6 +433,9 @@ animals.put('/:id', async (c) => {
     [a] = await db.update(schema.animals).set({ ...data, birthYear: birthYearOf(data), updatedAt: now() })
       .where(and(eq(schema.animals.id, id), eq(schema.animals.farmId, s.farmId))).returning();
   } catch (e) { uniqueTagError(e, data.tagNo); }
+  if (before.managementTag && before.managementTag !== a.managementTag) {
+    await db.insert(schema.managementTagHistory).values({ farmId: s.farmId, animalId: id, previousTag: before.managementTag, newTag: a.managementTag, changedOn: today(), changedBy: s.userId });
+  }
   if ((data.parcelId ?? null) !== before.parcelId || (data.structureId ?? null) !== before.structureId) {
     await db.insert(schema.movements).values({ farmId: s.farmId, animalId: id, date: today(), fromParcelId: before.parcelId, toParcelId: data.parcelId ?? null, toStructureId: data.structureId ?? null, createdBy: s.userId });
   }

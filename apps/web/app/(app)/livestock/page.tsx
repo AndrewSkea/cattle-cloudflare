@@ -4,13 +4,13 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Papa from 'papaparse'
-import { ArrowDown, ArrowUp, Download, FileUp, HeartPulse, MoveRight, PawPrint, Plus, Search, ShieldAlert, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Download, FileUp, Hash, HeartPulse, MoveRight, PawPrint, Plus, Search, ShieldAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/display'
 import { FormError, Segmented, Select } from '@/components/ui/form'
 import { Sheet } from '@/components/ui/overlay'
-import { AnimalSheet, HealthSheet, MoveSheet } from '@/components/forms/livestock-forms'
-import { api, useAnimals, useSave } from '@/lib/queries'
+import { AnimalSheet, HealthSheet, MoveSheet, RenumberSheet } from '@/components/forms/livestock-forms'
+import { api, useAnimalOptions, useAnimals, useSave } from '@/lib/queries'
 import { CATEGORY_LABELS, SPECIES, STATUS_META, categorySingular, speciesInfo } from '@/lib/constants'
 import { downloadUrl, fmtAge, fmtDate, fmtNum } from '@/lib/format'
 import { useSession } from '@/lib/session'
@@ -35,7 +35,9 @@ function LivestockInner() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'tag', dir: 1 })
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [limit, setLimit] = useState(PAGE)
-  const [sheet, setSheet] = useState<null | 'add' | 'move' | 'treat' | 'import'>(null)
+  const [sheet, setSheet] = useState<null | 'add' | 'move' | 'treat' | 'import' | 'renumber'>(null)
+  const { data: options = [] } = useAnimalOptions()
+  const formerTags = useMemo(() => new Map(options.map((o) => [o.id, o.formerTags || ''])), [options])
 
   // Keep species/category in the URL so dashboard links and back/forward work.
   useEffect(() => {
@@ -68,7 +70,7 @@ function LivestockInner() {
     const list = inSpecies.filter((a) =>
       (!category || a.category === category) && (!sex || a.sex === sex) && (!breed || a.breed === breed)
       && (!location || (location === '__none' ? !a.parcelName && !a.structureName : a.parcelName === location || a.structureName === location))
-      && (!s || `${a.tagNo} ${a.managementTag || ''} ${a.name || ''} ${a.breed || ''} ${a.damTag || ''}`.toLowerCase().includes(s)))
+      && (!s || `${a.tagNo} ${a.managementTag || ''} ${a.name || ''} ${a.breed || ''} ${a.damTag || ''} ${formerTags.get(a.id) || ''}`.toLowerCase().includes(s)))
     const val = (a: AnimalListItem): string | number => {
       switch (sort.key) {
         case 'tag': return a.managementTag || a.tagNo
@@ -86,7 +88,7 @@ function LivestockInner() {
       const c = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true })
       return c * sort.dir
     })
-  }, [inSpecies, q, category, sex, breed, location, sort])
+  }, [inSpecies, q, category, sex, breed, location, sort, formerTags])
 
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
@@ -106,6 +108,7 @@ function LivestockInner() {
         actions={<>
           <Button variant="secondary" onClick={() => downloadUrl(api.url('/api/animals/export'))}><Download />Export</Button>
           {can('worker') && <Button variant="secondary" onClick={() => setSheet('import')}><FileUp />Import</Button>}
+          {can('worker') && <Button variant="secondary" onClick={() => setSheet('renumber')}><Hash />Renumber</Button>}
           {can('worker') && <Button onClick={() => setSheet('add')}><Plus />Add animal</Button>}
         </>}
       />
@@ -155,6 +158,7 @@ function LivestockInner() {
             <span className="text-sm font-medium text-brand-900">{selected.size} selected</span>
             {can('worker') && <Button size="sm" variant="secondary" onClick={() => setSheet('move')}><MoveRight />Move</Button>}
             {can('worker') && <Button size="sm" variant="secondary" onClick={() => setSheet('treat')}><HeartPulse />Treat / vaccinate</Button>}
+            {can('worker') && <Button size="sm" variant="secondary" onClick={() => setSheet('renumber')}><Hash />Renumber</Button>}
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
         )}
@@ -229,6 +233,7 @@ function LivestockInner() {
       {sheet === 'move' && <MoveSheet open onClose={() => { setSheet(null); setSelected(new Set()) }} animalIds={[...selected]} />}
       {sheet === 'treat' && <HealthSheet open onClose={() => { setSheet(null); setSelected(new Set()) }} animalIds={[...selected]} />}
       {sheet === 'import' && <ImportSheet onClose={() => setSheet(null)} />}
+      {sheet === 'renumber' && <RenumberSheet open onClose={() => { setSheet(null); setSelected(new Set()) }} animalIds={[...selected]} />}
     </div>
   )
 }

@@ -171,6 +171,8 @@ test('recording a birth registers the calf and closes the pregnancy', async () =
   const d = dialog(page, 'Record a birth')
   await d.getByRole('radio', { name: 'Female', exact: true }).click()
   await d.getByLabel(L('Tag / ID')).fill('UK999999-000002')
+  // Calves are suggested their mother's number and birth year
+  await expect(d.getByLabel(L('Management tag'))).toHaveValue(`23-7/${new Date().toISOString().slice(2, 4)}`)
   await d.getByLabel(L('Management tag')).fill('C-1')
   await d.getByLabel(L('Birth weight')).fill('42')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -382,6 +384,27 @@ test('calendar, reports, families, health and quick find render', async () => {
   await page.getByPlaceholder(/Find an animal/).fill('22-6')
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: '22-6' })).toBeVisible()
+})
+
+test('renumber an animal; its old number still finds it', async () => {
+  await page.goto('/livestock')
+  await page.getByRole('textbox', { name: 'Search animals' }).fill('24-1')
+  await page.getByRole('checkbox', { name: 'Select UK523801-101305' }).check()
+  await page.getByRole('button', { name: 'Renumber', exact: true }).last().click()
+  const d = dialog(page, 'Give animals new numbers')
+  await d.getByLabel('New number for UK523801-101305').fill('22-6')
+  await page.getByRole('button', { name: 'Renumber 1' }).click()
+  await expect(d.getByText(/already used by UK523801-/)).toBeVisible()
+  await d.getByLabel('New number for UK523801-101305').fill('501')
+  await page.getByRole('button', { name: 'Renumber 1' }).click()
+  await expect(page.getByText('Numbers updated')).toBeVisible()
+
+  await page.keyboard.press('ControlOrMeta+k')
+  await page.getByPlaceholder(/Find an animal/).fill('24-1')
+  await expect(page.getByText(/was 24-1/)).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: '501' })).toBeVisible()
+  await expect(page.getByText(/Previously 24-1/)).toBeVisible()
 })
 
 test('mart sales: find the farm in Orkney Mart reports, import a lot, undo it', async () => {
