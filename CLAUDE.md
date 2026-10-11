@@ -100,6 +100,13 @@ The original data (149 cattle, 89 births, 39 services, 6 health events, exported
 `migration-import.sql`; `scripts/transform-v1-data.py` maps it to v2 (normalised sex/breeds, and fixes a v1 bug
 where calving/service rows pointed at the cow's latest calf instead of the cow).
 
+**Farm spreadsheet updates:** the farm keeps its herd in a workbook (dated sheets "cattle <date>" plus
+"cattle sold or died"). `scripts/import-cattle-xlsx.py` turns it into SQL that upserts animals by tag (ids kept),
+rebuilds calvings, services, health checks, sale weights and sale transactions, and links exactly-matching mart lots
+(usage in the file header; needs openpyxl). Keep the workbook in `seed_data/`, which is gitignored: the repo is public.
+Management numbers: cows own a number (97), 2024 heifers "N.24", calves "<dam>/<yy>" (twins -A/-B); renumbering keeps
+the old number in `management_tag_history`.
+
 ## Secrets (wrangler secret put)
 
 `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
