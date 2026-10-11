@@ -98,11 +98,15 @@ jobs:
           cp apps/worker/.dev.vars.example apps/worker/.dev.vars
           npx playwright install --with-deps chromium
           mkdir -p .feedback
+          # The whole conversation, oldest first: Claude's questions and every reply (from the app or on GitHub).
+          # Status comments from the workflow (started, live, failed) are left out.
           gh issue view "$ISSUE" --json title,body,comments --jq '
             "# " + .title + "\n\n" + .body + "\n\n" +
-            ([.comments[] | select(.author.login == "github-actions" and (.body | contains("claude-question"))) | .body] as $q
-             | if ($q | length) > 0 then "## Claude asked earlier\n\n" + $q[-1] + "\n\n" else "" end) +
-            ([.comments[] | select(.author.login != "github-actions") | "## Follow-up from the family\n\n" + .body] | join("\n\n"))
+            ([.comments[]
+              | if .author.login == "github-actions" then
+                  (if (.body | contains("claude-question")) then "## Claude asked\n\n" + .body else empty end)
+                else "## Reply from the family\n\n" + .body end]
+             | if length > 0 then "# Conversation so far (oldest first; the last reply is the newest)\n\n" + join("\n\n") else "" end)
           ' > .feedback/issue.md
           cat .feedback/issue.md
       - name: Claude implements the request
