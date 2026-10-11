@@ -4,13 +4,14 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { Crown, GitBranch, Search } from 'lucide-react'
-import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/display'
-import { Segmented } from '@/components/ui/form'
+import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/display'
+import { Segmented, Select } from '@/components/ui/form'
+import { FamilyTreeDiagram } from '@/components/family-tree'
 import { getData } from '@/lib/api'
 import { fmtMoney, fmtNum } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
-import type { FamilyStats } from '@/lib/types'
+import type { FamilyStats, FamilyTree } from '@/lib/types'
 
 interface Family {
   founder: { id: number; tagNo: string; managementTag: string | null; name: string | null; breed: string | null; dob: string | null; status: string }
@@ -27,6 +28,11 @@ export default function FamiliesPage() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<Sort>('size')
   const [showSingles, setShowSingles] = useState(false)
+  // The family drawn as a tree: the largest unless one is picked
+  const [picked, setPicked] = useState<number | null>(null)
+  const largest = useMemo(() => [...(data || [])].filter((f) => f.descendants > 0).sort((a, b) => b.descendants - a.descendants), [data])
+  const treeFor = picked ?? largest[0]?.founder.id ?? null
+  const tree = useQuery({ queryKey: ['families', 'tree', 'line', treeFor], queryFn: () => getData<FamilyTree>(`/api/animals/${treeFor}/tree?up=0&down=8`), enabled: !!treeFor })
 
   const rows = useMemo(() => {
     let list = (data || []).filter((f) => showSingles || f.descendants > 0)
@@ -50,6 +56,18 @@ export default function FamiliesPage() {
         </div>
         <Segmented value={sort} onChange={setSort} options={[{ value: 'size', label: 'Largest' }, { value: 'active', label: 'Most on farm' }, { value: 'interval', label: 'Best interval' }, { value: 'sales', label: 'Most sales' }]} />
       </div>
+      {treeFor && (
+        <Card className="mb-6">
+          <CardHeader title="Family tree" description="Every descendant of the founding female. Hover over an animal for details; click to open it." icon={GitBranch} />
+          <div className="p-5 pt-3">
+            <label className="mb-3 flex items-center gap-2 text-sm text-stone-600">Family of
+              <Select value={treeFor} onChange={(e) => setPicked(Number(e.target.value))} aria-label="Family to draw" className="w-56">
+                {largest.map((f) => <option key={f.founder.id} value={f.founder.id}>{f.founder.managementTag || f.founder.tagNo}{f.founder.name ? ` · ${f.founder.name}` : ''} ({f.descendants} descendants)</option>)}
+              </Select>
+            </label>
+            {tree.data ? <FamilyTreeDiagram tree={tree.data} maxUp={0} /> : <Skeleton className="h-64 rounded-xl" />}</div>
+        </Card>
+      )}
       {isLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
         : rows.length === 0 ? <Card><EmptyState icon={GitBranch} title="No families yet" description="Link animals to their dams to build maternal lines." /></Card> : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

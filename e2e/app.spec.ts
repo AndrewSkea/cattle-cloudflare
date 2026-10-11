@@ -95,12 +95,20 @@ test('livestock list filters and the family tree', async () => {
   await page.getByRole('link', { name: /^13-1/ }).click()
   await expect(page.getByRole('heading', { name: '13-1' })).toBeVisible()
   await page.getByRole('tab', { name: /Family/ }).click()
-  await expect(page.getByRole('heading', { name: 'Pedigree' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '22-6', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Family tree' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Family performance' })).toBeVisible()
-  await page.getByRole('link', { name: '22-6', exact: true }).click()
+  // Hovering over an animal in the tree shows its details; clicking opens it
+  const calf = page.getByRole('link', { name: /^22-6,/ })
+  await calf.hover()
+  await expect(page.getByRole('tooltip')).toContainText('Born')
+  await expect(page.getByRole('tooltip')).toContainText('On farm')
+  await calf.click()
   await expect(page.getByRole('heading', { name: '22-6' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /^Dam 13-1/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^13-1, female/ })).toBeVisible()
+
+  await page.goto('/families')
+  await expect(page.getByRole('group', { name: 'Family tree' })).toBeVisible()
+  await expect(page.getByLabel('Family to draw')).toBeVisible()
 })
 
 test('add and edit an animal; duplicate tags are rejected', async () => {

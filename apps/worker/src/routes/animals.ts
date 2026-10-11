@@ -14,7 +14,7 @@ import {
   ANIMAL_STATUS, HEALTH_TYPES, SPECIES, isoDate, optDate, optId, optNum, optPosNum, optText, reqText,
 } from '../lib/validators';
 import {
-  ageMonths, animalInFarm, classify, descendantIds, families, familyReport, loadFarmGraph,
+  ageMonths, animalInFarm, classify, descendantIds, families, familyReport, familyTree, loadFarmGraph,
 } from '../services/livestock';
 import { syncSourceTxn, deleteSourceTxn } from '../services/finance';
 import { exitAnimal, reinstateAnimal } from '../services/exit';
@@ -418,6 +418,15 @@ animals.get('/:id/family', async (c) => {
   const g = await loadFarmGraph(c.get('db'), s.farmId);
   if (!g.animals.has(id)) throw notFound('Animal');
   return c.json({ data: familyReport(g, id) });
+});
+
+animals.get('/:id/tree', async (c) => {
+  const s = farmSession(c);
+  const id = idParam(c);
+  const g = await loadFarmGraph(c.get('db'), s.farmId);
+  if (!g.animals.has(id)) throw notFound('Animal');
+  const n = (k: string, d: number) => Math.min(8, Math.max(0, Number(c.req.query(k) ?? d) || 0));
+  return c.json({ data: familyTree(g, id, n('up', 3), n('down', 6)) });
 });
 
 animals.put('/:id', async (c) => {

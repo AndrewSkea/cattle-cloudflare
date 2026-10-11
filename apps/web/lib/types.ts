@@ -372,6 +372,37 @@ export interface PedigreeNode {
   sire: PedigreeNode | null
 }
 
+export interface FamilyTreeNode {
+  id: number
+  tagNo: string
+  managementTag: string | null
+  name: string | null
+  sex: 'female' | 'male'
+  castrated: boolean
+  breed: string | null
+  dob: string | null
+  birthYear: number | null
+  status: string
+  exitDate: string | null
+  exitReason: string | null
+  ageMonths: number | null
+  latestWeightKg: number | null
+  latestWeightDate: string | null
+  salePrice: number | null
+  saleWeightKg: number | null
+  sireName: string | null
+  offspring: number
+}
+
+export interface FamilyTreeUp { id: number | null; sireName?: string | null; dam: FamilyTreeUp | null; sire: FamilyTreeUp | null }
+
+export interface FamilyTree {
+  rootId: number
+  up: FamilyTreeUp | null
+  down: { id: number; children: FamilyTree['down'][] }
+  nodes: Record<number, FamilyTreeNode>
+}
+
 export interface FamilyReport {
   pedigree: PedigreeNode
   descendants: TreeNode

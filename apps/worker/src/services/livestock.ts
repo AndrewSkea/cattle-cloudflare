@@ -22,6 +22,7 @@ export interface AnimalLite {
   sireName: string | null;
   status: string;
   exitDate: string | null;
+  exitReason: string | null;
   salePrice: number | null;
   saleWeightKg: number | null;
 }
@@ -91,7 +92,7 @@ export async function loadFarmGraph(db: DrizzleD1Database, farmId: number): Prom
       managementTag: schema.animals.managementTag, name: schema.animals.name, sex: schema.animals.sex,
       castrated: schema.animals.castrated, breed: schema.animals.breed, dob: schema.animals.dob,
       birthYear: schema.animals.birthYear, damId: schema.animals.damId, sireId: schema.animals.sireId,
-      sireName: schema.animals.sireName, status: schema.animals.status, exitDate: schema.animals.exitDate,
+      sireName: schema.animals.sireName, status: schema.animals.status, exitDate: schema.animals.exitDate, exitReason: schema.animals.exitReason,
       salePrice: schema.animals.salePrice, saleWeightKg: schema.animals.saleWeightKg,
     }).from(schema.animals).where(eq(schema.animals.farmId, farmId)).all(),
     db.select({ damId: schema.birthRecords.damId, date: schema.birthRecords.date, outcome: schema.birthRecords.outcome, ease: schema.birthRecords.ease })
@@ -263,6 +264,59 @@ export function familyReport(g: FarmGraph, id: number) {
     descendantStats: aggregate(g, desc.map((d) => d.id)),
     herd: aggregate(g, herd),
   };
+}
+
+// ---------- Family tree diagram ----------
+
+/** What the tree diagram shows when you hover over an animal. */
+function treeCard(g: FarmGraph, id: number) {
+  const a = g.animals.get(id)!;
+  const w = g.weights.get(id);
+  const last = w?.[w.length - 1];
+  const gone = a.status !== 'active' && a.exitDate;
+  return {
+    id: a.id, tagNo: a.tagNo, managementTag: a.managementTag, name: a.name, sex: a.sex, castrated: a.castrated,
+    breed: a.breed, dob: a.dob, birthYear: a.birthYear, status: a.status, exitDate: a.exitDate, exitReason: a.exitReason,
+    // Age now, or at the time it left the farm
+    ageMonths: ageMonths(a.dob, a.birthYear, gone ? new Date(a.exitDate + 'T00:00:00Z') : undefined),
+    latestWeightKg: last?.weightKg ?? null, latestWeightDate: last?.date ?? null,
+    salePrice: a.salePrice, saleWeightKg: a.saleWeightKg, sireName: a.sireName,
+    offspring: (g.childrenOf.get(id) || []).length,
+  };
+}
+
+type TreeUp = { id: number | null; sireName?: string | null; dam: TreeUp | null; sire: TreeUp | null };
+type TreeDown = { id: number; children: TreeDown[] };
+
+/**
+ * Ancestors `up` generations above the animal and descendants `down` generations below, as id trees plus a
+ * flat map of node details. The client lays it out.
+ */
+export function familyTree(g: FarmGraph, id: number, up = 3, down = 6) {
+  const nodes = new Map<number, ReturnType<typeof treeCard>>();
+  const add = (x: number) => { if (!nodes.has(x)) nodes.set(x, treeCard(g, x)); };
+  const ancestors = (x: number | null, depth: number, seen: Set<number>): TreeUp | null => {
+    if (!x || !g.animals.has(x) || seen.has(x)) return null;
+    add(x);
+    const a = g.animals.get(x)!;
+    const next = new Set(seen).add(x);
+    return {
+      id: x, sireName: a.sireName,
+      dam: depth > 0 ? ancestors(a.damId, depth - 1, next) : null,
+      sire: depth > 0 ? ancestors(a.sireId, depth - 1, next) : null,
+    };
+  };
+  const seen = new Set<number>([id]);
+  const descendants = (x: number, depth: number): TreeDown => {
+    add(x);
+    const kids = depth > 0
+      ? (g.childrenOf.get(x) || []).filter((c) => !seen.has(c))
+        .sort((p, q) => (g.animals.get(p)!.dob || '').localeCompare(g.animals.get(q)!.dob || ''))
+      : [];
+    kids.forEach((c) => seen.add(c));
+    return { id: x, children: kids.map((c) => descendants(c, depth - 1)) };
+  };
+  return { rootId: id, up: ancestors(id, up, new Set()), down: descendants(id, down), nodes: Object.fromEntries(nodes) };
 }
 
 /** Maternal families: founding females (no dam recorded on farm) ranked by descendants. */
