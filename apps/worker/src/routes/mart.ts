@@ -6,11 +6,13 @@ import { Hono } from 'hono';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
-import { type AppEnv, HttpError, body, farmSession, idParam, logActivity, notFound, now, requireAccess, requireRole } from '../lib/context';
+import { type AppEnv, HttpError, body, farmSession, idParam, logActivity, notFound, now, requireAccess, requireRole, roleAtLeast } from '../lib/context';
 import { isoDate } from '../lib/validators';
 import { exitAnimal, reinstateAnimal } from '../services/exit';
 import { MART_PROVIDER, breedName, lotCandidates, martConfig, matchFarm, pruneMatches, syncOrkneyMart } from '../services/mart/orkney';
 import { prettySection, sellerKey } from '../services/mart/parse';
+import { herdValuation, sellingSeasons } from '../services/mart/insights';
+import { loadFarmGraph } from '../services/livestock';
 
 const mart = new Hono<AppEnv>();
 mart.use('*', requireAccess('viewer', 'worker'));
@@ -220,6 +222,17 @@ mart.get('/prices', async (c) => {
     WHERE m.farm_id = ${s.farmId} AND m.status = 'imported' AND l.species = ${species}
     GROUP BY month, l.category ORDER BY month`);
   return c.json({ data: { market, mine } });
+});
+
+/** Herd value at recent mart prices (managers and owners: it is money) and the months that have paid best. */
+mart.get('/insights', async (c) => {
+  const s = farmSession(c);
+  const db = c.get('db');
+  const [valuation, seasons] = await Promise.all([
+    roleAtLeast(s.role, 'manager') ? loadFarmGraph(db, s.farmId).then((g) => herdValuation(db, g)) : Promise.resolve(null),
+    sellingSeasons(db),
+  ]);
+  return c.json({ data: { valuation, seasons } });
 });
 
 export default mart;

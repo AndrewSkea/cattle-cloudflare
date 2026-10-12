@@ -19,6 +19,8 @@ export interface Env {
   SCOTEID_ENDPOINT?: string; // defaults to https://api.scoteid.com/api/ (test: https://api.test.scoteid.com/api)
   GITHUB_FEEDBACK_TOKEN?: string; // fine-grained token, Issues read/write on FEEDBACK_REPO; feedback is only stored without it
   FEEDBACK_REPO?: string; // owner/name, defaults to AndrewSkea/cattle-cloudflare
+  VAPID_PUBLIC_KEY?: string; // Web Push: raw P-256 public key (base64url), in wrangler.toml [vars]
+  VAPID_PRIVATE_KEY?: string; // Web Push: the private scalar d (base64url), a secret; reminders are off without it
 }
 
 export type Role = 'viewer' | 'worker' | 'manager' | 'owner';

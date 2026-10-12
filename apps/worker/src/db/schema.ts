@@ -40,6 +40,7 @@ export const farms = sqliteTable('farms', {
   currency: text('currency').notNull().default('GBP'),
   areaUnit: text('area_unit').notNull().default('ha'), // ha | ac
   species: text('species').notNull().default('["cattle"]'), // JSON array of species kept
+  hiddenSections: text('hidden_sections').notNull().default('[]'), // JSON array of menu sections the farm doesn't use, e.g. ["inventory"]
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -568,3 +569,18 @@ export type Farm = typeof farms.$inferSelect;
 export type Animal = typeof animals.$inferSelect;
 export type Equipment = typeof equipment.$inferSelect;
 export type MartLot = typeof martLots.$inferSelect;
+
+/** A browser/phone that asked for reminder notifications (Web Push). One row per device. */
+export const pushSubscriptions = sqliteTable('push_subscriptions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  label: text('label'), // e.g. "iPhone" — shown in the profile so people can tell devices apart
+  lastSentAt: text('last_sent_at'),
+  createdAt: createdAt(),
+}, (t) => ({
+  user: index('idx_push_user').on(t.userId),
+}));

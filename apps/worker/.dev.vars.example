@@ -6,3 +6,6 @@ GOOGLE_CLIENT_SECRET=
 # Local fake ScotEID (served by the worker itself; username anything, password "demo-password")
 SCOTEID_APP_KEY=local-dev-key
 SCOTEID_ENDPOINT=http://localhost:8787/api/dev/scoteid
+# Local-only Web Push keys for reminder notifications (production uses its own pair: VAPID_PUBLIC_KEY in wrangler.toml, VAPID_PRIVATE_KEY secret)
+VAPID_PUBLIC_KEY=BNJD4lod3RFskWo0lAv9lCRhzNvcbYvTK1yQYsFrDN0NEhEmgz2GUFQuo2s76kDFEVf_uhI51ZA3KwSIL9PbC2Y
+VAPID_PRIVATE_KEY=FRYfzqVaYKQo-IBoAavbVQhCArC1BB5A10Hni9IUCZg

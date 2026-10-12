@@ -10,14 +10,14 @@ import { Badge, Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/d
 import { FormError, Segmented, Select } from '@/components/ui/form'
 import { Sheet } from '@/components/ui/overlay'
 import { AnimalSheet, HealthSheet, MoveSheet, RenumberSheet } from '@/components/forms/livestock-forms'
-import { api, useAnimalOptions, useAnimals, useSave } from '@/lib/queries'
+import { api, useAnimalOptions, useAnimals, useBreeding, useSave } from '@/lib/queries'
 import { CATEGORY_LABELS, SPECIES, STATUS_META, categorySingular, speciesInfo } from '@/lib/constants'
 import { downloadUrl, fmtAge, fmtDate, fmtNum } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import type { AnimalListItem } from '@/lib/types'
 
-type SortKey = 'tag' | 'category' | 'breed' | 'age' | 'dam' | 'location' | 'weight' | 'offspring'
+type SortKey = 'tag' | 'category' | 'breed' | 'age' | 'dam' | 'location' | 'weight' | 'offspring' | 'due'
 const PAGE = 100
 
 function LivestockInner() {
@@ -38,6 +38,17 @@ function LivestockInner() {
   const [sheet, setSheet] = useState<null | 'add' | 'move' | 'treat' | 'import' | 'renumber'>(null)
   const { data: options = [] } = useAnimalOptions()
   const formerTags = useMemo(() => new Map(options.map((o) => [o.id, o.formerTags || ''])), [options])
+  const { data: breeding } = useBreeding()
+  // Due date per female from her latest pending service or scan (not scanned empty)
+  const dueBy = useMemo(() => {
+    const m = new Map<number, { date: string; id: number; due: string | null; empty: boolean }>()
+    for (const b of breeding || []) {
+      if (b.outcome !== 'pending' || b.event === 'heat') continue
+      const cur = m.get(b.animalId)
+      if (!cur || b.date > cur.date || (b.date === cur.date && b.id > cur.id)) m.set(b.animalId, { date: b.date, id: b.id, due: b.expectedDueDate, empty: b.scanResult === 'empty' })
+    }
+    return new Map([...m.entries()].filter(([, v]) => !v.empty && v.due).map(([k, v]) => [k, v.due!]))
+  }, [breeding])
 
   // Keep species/category in the URL so dashboard links and back/forward work.
   useEffect(() => {
@@ -81,6 +92,7 @@ function LivestockInner() {
         case 'location': return a.parcelName || a.structureName || '~'
         case 'weight': return a.latestWeightKg ?? -1
         case 'offspring': return a.offspringCount
+        case 'due': return dueBy.get(a.id) || '~'
       }
     }
     return [...list].sort((x, y) => {
@@ -88,7 +100,11 @@ function LivestockInner() {
       const c = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true })
       return c * sort.dir
     })
-  }, [inSpecies, q, category, sex, breed, location, sort, formerTags])
+  }, [inSpecies, q, category, sex, breed, location, sort, formerTags, dueBy])
+  // Columns only earn their space when something in this herd fills them
+  const showLocation = status !== 'active' || locations.length > 0
+  const showWeight = inSpecies.some((a) => a.latestWeightKg)
+  const showDue = status !== 'exited' && inSpecies.some((a) => dueBy.has(a.id))
 
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
@@ -136,7 +152,7 @@ function LivestockInner() {
             <div className="flex flex-wrap items-center gap-2">
               <Select value={sex} onChange={(e) => setSex(e.target.value)} className="w-28" aria-label="Sex"><option value="">Any sex</option><option value="female">Female</option><option value="male">Male</option></Select>
               <Select value={breed} onChange={(e) => setBreed(e.target.value)} className="w-40" aria-label="Breed"><option value="">All breeds</option>{breeds.map((b) => <option key={b}>{b}</option>)}</Select>
-              <Select value={location} onChange={(e) => setLocation(e.target.value)} className="w-40" aria-label="Location"><option value="">Anywhere</option><option value="__none">No location</option>{locations.map((b) => <option key={b}>{b}</option>)}</Select>
+              {locations.length > 0 && <Select value={location} onChange={(e) => setLocation(e.target.value)} className="w-40" aria-label="Location"><option value="">Anywhere</option><option value="__none">No location</option>{locations.map((b) => <option key={b}>{b}</option>)}</Select>}
               <Segmented size="sm" value={status} onChange={(v) => { setStatus(v); setSelected(new Set()) }} options={[{ value: 'active', label: 'On farm' }, { value: 'exited', label: 'Gone' }, { value: 'all', label: 'All' }]} />
             </div>
           </div>
@@ -177,7 +193,10 @@ function LivestockInner() {
                   <tr>
                     <th className="w-10 px-3 py-2.5"><input type="checkbox" aria-label="Select all" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))} className="size-4 rounded border-stone-300 text-brand-700 focus:ring-brand-500" /></th>
                     <Th k="tag">Tag</Th><Th k="category">Class</Th><Th k="breed">Breed</Th><Th k="age">Age</Th><Th k="dam">Dam</Th>
-                    <Th k="location">Location</Th><Th k="weight" className="text-right">Weight</Th><Th k="offspring" className="text-right">Offspring</Th>
+                    {showDue && <Th k="due">Due to calve</Th>}
+                    {showLocation && <Th k="location">{status === 'active' ? 'Location' : 'Location / left'}</Th>}
+                    {showWeight && <Th k="weight" className="text-right">Weight</Th>}
+                    <Th k="offspring" className="text-right">Offspring</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -201,8 +220,9 @@ function LivestockInner() {
                       <td className="px-3 py-2.5 text-stone-600">{a.breed || '—'}</td>
                       <td className="px-3 py-2.5 text-stone-600 tabular">{fmtAge(a.ageMonths)}</td>
                       <td className="px-3 py-2.5">{a.damId ? <Link href={`/livestock/view?id=${a.damId}`} className="text-stone-600 hover:text-brand-700 hover:underline">{a.damTag}</Link> : <span className="text-stone-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-stone-600">{a.status !== 'active' ? <span className="text-stone-400">{fmtDate(a.exitDate)}</span> : a.parcelName || a.structureName || <span className="text-stone-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-right text-stone-600 tabular">{a.latestWeightKg ? `${fmtNum(a.latestWeightKg)} kg` : '—'}</td>
+                      {showDue && <td className="whitespace-nowrap px-3 py-2.5 text-stone-600">{dueBy.get(a.id) ? fmtDate(dueBy.get(a.id), 'd MMM yy') : <span className="text-stone-300">—</span>}</td>}
+                      {showLocation && <td className="px-3 py-2.5 text-stone-600">{a.status !== 'active' ? <span className="text-stone-400">{fmtDate(a.exitDate)}</span> : a.parcelName || a.structureName || <span className="text-stone-300">—</span>}</td>}
+                      {showWeight && <td className="px-3 py-2.5 text-right text-stone-600 tabular">{a.latestWeightKg ? `${fmtNum(a.latestWeightKg)} kg` : '—'}</td>}
                       <td className="px-3 py-2.5 text-right text-stone-600 tabular">{a.offspringCount || '—'}</td>
                     </tr>
                   ))}
@@ -215,7 +235,7 @@ function LivestockInner() {
                   <input type="checkbox" aria-label={`Select ${a.tagNo}`} checked={selected.has(a.id)} onChange={() => toggle(a.id)} className="size-4 rounded border-stone-300 text-brand-700" />
                   <Link href={`/livestock/view?id=${a.id}`} className="min-w-0 flex-1">
                     <p className="font-semibold text-stone-900">{a.managementTag || a.tagNo}{a.name && <span className="ml-1.5 font-normal text-stone-500">{a.name}</span>}</p>
-                    <p className="truncate text-xs text-stone-500">{[categorySingular(a.category), a.breed, fmtAge(a.ageMonths), a.parcelName].filter(Boolean).join(' · ')}</p>
+                    <p className="truncate text-xs text-stone-500">{[categorySingular(a.category), a.breed, fmtAge(a.ageMonths), a.parcelName, dueBy.get(a.id) && `due ${fmtDate(dueBy.get(a.id), 'd MMM')}`].filter(Boolean).join(' · ')}</p>
                   </Link>
                   {a.status !== 'active' && <Badge tone={STATUS_META[a.status].tone}>{STATUS_META[a.status].label}</Badge>}
                 </li>

@@ -28,6 +28,8 @@ apps/
                             mart (Orkney Mart matches/import/prices), compliance (+ scoteid, + dev ScotEID mock)
     src/services/           livestock (classes, family graph & stats), finance (auto transactions), exit (sale/death),
                             mart/parse (report parser, pure), mart/orkney (fetch, store, match, candidates),
+                            mart/insights (herd value at mart prices, best months to sell), push (Web Push, VAPID,
+                            aes128gcm), reminders (the 8am notification),
                             compliance (UK tag check digit, deadlines, holding register), scoteid (SOAP client + sync)
     src/db/schema.ts        Drizzle schema; migrations in src/db/migrations
   web/      Next.js 15 static export (App Router, React 19, Tailwind 3, TanStack Query, Recharts, Leaflet + Geoman)
@@ -56,10 +58,27 @@ Key decisions:
   caches `/api`). `lib/install.ts` registers it and keeps Chrome's install prompt for the sidebar "Install app" button;
   Safari users get Add to Home Screen / Add to Dock instructions. Bump `VERSION` in `sw.js` to drop old caches.
 - Dynamic pages use query strings (`/livestock/view?id=1`) because of static export.
+- **Phones:** below `lg` the shell shows a bottom bar (Home, Animals, Quick add, Breeding, Tasks); `main` has bottom
+  padding for it. Summary cards are two per row (`grid-cols-2 … lg:grid-cols-4`). Quick add menu + sheets:
+  `components/quick-add.tsx` (shared with the dashboard).
+- **Hidden sections:** `farms.hidden_sections` (JSON) hides menu sections a farm doesn't use (Farm settings);
+  `useSession().shows('inventory')`. Hideable list: `HIDEABLE_SECTIONS` in `lib/validators.ts` and `lib/constants.ts`.
+- **Breeding:** the Calving tab groups pregnancies (past due, this week, next week, by month) with a "Calved" button
+  that pre-fills the sire; new calves show their ScotEID tag/register deadlines. "Scan results" saves a batch
+  (`POST /api/breeding/scans`): in-calf keeps the service's sire and due date, empty closes the service.
+  The cull list (`lib/cull.ts`) weighs reasons: scanned empty, long intervals, no calf lately, age, losses, hard
+  calvings, notes saying farrow/cull.
+- **Reminders (Web Push):** devices subscribe on Profile (`/api/push`); the `0 7 * * *` cron sends one notification
+  per device when something is due (`services/reminders.ts`). Payloads are encrypted so the service worker doesn't
+  fetch (Access cookies expire). Keys: `VAPID_PUBLIC_KEY` var in wrangler.toml, `VAPID_PRIVATE_KEY` secret; local
+  dev keys are in `.dev.vars.example`. iPhones need the app on the Home Screen first.
+- **Bank import:** Finances → Add → Import bank statement parses a CSV in the browser (`lib/bank-csv.ts`, guesses
+  categories); `POST /api/finance/import` skips lines matching an existing date + amount + description.
 - **Orkney Mart:** reports come from the mart's WordPress events API (`/wp-json/tribe/events/v1/events?categories=sales-report`).
   Parsed lots/averages are shared tables (`mart_reports`, `mart_lots`, `mart_averages`); each farm's seller names
   (`farm_integrations` provider `orkney_mart`) produce `mart_matches` to review. A cron (`17 */3 * * *`) fetches the last
-  21 days. Importing a match runs the normal exit (sale) path, so withdrawal checks and finance entries apply; undo reverses it.
+  21 days. Reports uses the shared lots to value the herd and show which months pay best (`/api/mart/insights`).
+  Importing a match runs the normal exit (sale) path, so withdrawal checks and finance entries apply; undo reverses it.
   Backfill or reload history with `scripts/mart-backfill.ts` (see the file header).
 - **ScotEID:** SOAP API (WSDL https://api.scoteid.com/api?wsdl). Needs a vendor `SCOTEID_APP_KEY` from ScotEID
   (support@scoteid.com; test against https://api.test.scoteid.com/api first) plus each keeper's own login, stored
@@ -109,7 +128,8 @@ the old number in `management_tag_history`.
 
 ## Secrets (wrangler secret put)
 
-`JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
+`JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PRIVATE_KEY` (reminders; pairs with `VAPID_PUBLIC_KEY`
+in wrangler.toml); later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
 Google OAuth redirect URI: `https://hooveswho.andrewskea.com/api/auth/callback/google`.
 Worker secret `GITHUB_FEEDBACK_TOKEN`: fine-grained GitHub token, this repo only, Issues read/write (without it feedback
 is only stored in D1).

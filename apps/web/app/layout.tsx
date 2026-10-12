@@ -18,6 +18,7 @@ export const viewport: Viewport = {
   themeColor: '#275040',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover', // lets the phone bottom bar sit above the home indicator (env(safe-area-inset-bottom))
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

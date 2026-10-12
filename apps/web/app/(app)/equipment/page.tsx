@@ -45,7 +45,7 @@ export default function EquipmentPage() {
     <div className="space-y-6">
       <PageHeader title="Equipment" description="Tractors, vehicles, implements and tools: service schedules, hours and costs."
         actions={can('worker') && <Button onClick={() => setAdding(true)}><Plus />Add equipment</Button>} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="In use" value={active.length} icon={Tractor} />
         <StatCard label="Service overdue" value={active.filter((e) => e.serviceState === 'overdue').length} icon={Wrench} tone="clay" />
         <StatCard label="Due within 30 days" value={active.filter((e) => e.serviceState === 'due_soon').length} icon={Gauge} tone="wheat" />

@@ -69,9 +69,19 @@ dashboard.get('/', async (c) => {
   const withdrawals = health.filter((r) => (r.withdrawalMeatUntil && r.withdrawalMeatUntil >= t) || (r.withdrawalMilkUntil && r.withdrawalMilkUntil >= t))
     .map((r) => ({ id: r.id, animalId: r.animalId, animalTag: tag(r.animalId), title: r.title, until: [r.withdrawalMeatUntil, r.withdrawalMilkUntil].filter(Boolean).sort().pop() }));
 
-  const dueBirths = breeding.filter((b) => b.expectedDueDate && b.expectedDueDate <= addDays(t, 45) && g.animals.get(b.animalId)?.status === 'active')
+  // One pregnancy per female: her latest pending service or scan (not scanned empty).
+  const latestPending = new Map<number, typeof breeding[number]>();
+  for (const b of breeding) {
+    if (b.event === 'heat' || b.scanResult === 'empty' || g.animals.get(b.animalId)?.status !== 'active') continue;
+    const cur = latestPending.get(b.animalId);
+    if (!cur || b.date > cur.date || (b.date === cur.date && b.id > cur.id)) latestPending.set(b.animalId, b);
+  }
+  const pregnancies = [...latestPending.values()];
+  const dueBirths = pregnancies.filter((b) => b.expectedDueDate && b.expectedDueDate <= addDays(t, 45))
     .map((b) => ({ id: b.id, animalId: b.animalId, animalTag: tag(b.animalId), date: b.expectedDueDate!, overdue: b.expectedDueDate! < t }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const dueDates = pregnancies.map((b) => b.expectedDueDate).filter((d): d is string => !!d && d >= t).sort();
+  const calving = { pregnant: pregnancies.length, next: dueDates[0] ?? null, soon: dueBirths.filter((b) => !b.overdue).length, overdue: dueBirths.filter((b) => b.overdue).length };
 
   const equipmentAlerts = equipment.filter((e) => e.status !== 'sold' && e.status !== 'retired')
     .map((e) => ({ id: e.id, name: e.name, ...serviceStatus(e), status: e.status }))
@@ -104,11 +114,12 @@ dashboard.get('/', async (c) => {
         birthLossesThisYear: births.filter((b) => b.outcome !== 'alive').length,
         soldThisYear: exitsThisYear.filter((a) => a.status === 'sold' || a.status === 'culled').length,
         diedThisYear: exitsThisYear.filter((a) => a.status === 'died').length,
-        pregnantOrServed: breeding.filter((b) => b.event !== 'heat').length,
+        pregnantOrServed: pregnancies.length,
         landHa: parcels.reduce((x, p) => x + (p.areaHa || 0), 0),
         fields: parcels.length,
         equipment: equipment.filter((e) => e.status !== 'sold' && e.status !== 'retired').length,
       },
+      calving,
       alerts: { healthDue, withdrawals, dueBirths, equipment: equipmentAlerts, stock: stockAlerts, martNew, compliance },
       tasks: { open: openTasks.length, overdue: openTasks.filter((x) => x.overdue).length, mine: openTasks.filter((x) => x.assigneeUserId === s.userId).slice(0, 8), upcoming: openTasks.slice(0, 8) },
       money,

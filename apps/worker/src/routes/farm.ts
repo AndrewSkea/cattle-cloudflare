@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import {
   type AppEnv, type Role, HttpError, body, farmSession, logActivity, now, requireRole, roleAtLeast,
 } from '../lib/context';
-import { optText, SPECIES } from '../lib/validators';
+import { HIDEABLE_SECTIONS, optText, SPECIES } from '../lib/validators';
 import { sessionCookie } from '../lib/auth';
 import { acceptInvite, findUsableInvite } from '../lib/invites';
 
@@ -25,6 +25,7 @@ const farmFields = z.object({
   currency: z.enum(['GBP', 'EUR', 'USD', 'AUD', 'NZD', 'CAD']).default('GBP'),
   areaUnit: z.enum(['ha', 'ac']).default('ha'),
   species: z.array(z.enum(SPECIES)).min(1).default(['cattle']),
+  hiddenSections: z.array(z.enum(HIDEABLE_SECTIONS)).default([]),
 });
 
 function slugify(name: string) {
@@ -40,7 +41,7 @@ farmsCreate.post('/', async (c) => {
   const data = await body(c, farmFields);
   const db = c.get('db');
   const slug = `${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
-  const [farm] = await db.insert(schema.farms).values({ ...data, species: JSON.stringify(data.species), slug }).returning();
+  const [farm] = await db.insert(schema.farms).values({ ...data, species: JSON.stringify(data.species), hiddenSections: JSON.stringify(data.hiddenSections), slug }).returning();
   await db.insert(schema.farmMembers).values({ farmId: farm.id, userId: s.userId, role: 'owner' });
   await db.update(schema.users).set({ lastFarmId: farm.id }).where(eq(schema.users.id, s.userId));
   await db.insert(schema.activityLog).values({ farmId: farm.id, userId: s.userId, action: 'created', entity: 'farm', entityId: farm.id, summary: `Created farm ${farm.name}` });
@@ -75,15 +76,18 @@ farm.get('/', requireRole('viewer'), async (c) => {
   const s = farmSession(c);
   const f = await c.get('db').select().from(schema.farms).where(eq(schema.farms.id, s.farmId)).get();
   if (!f) throw new HttpError(404, 'Farm not found');
-  return c.json({ data: { ...f, species: JSON.parse(f.species) } });
+  return c.json({ data: { ...f, species: JSON.parse(f.species), hiddenSections: JSON.parse(f.hiddenSections) } });
 });
 
 farm.put('/', requireRole('manager'), async (c) => {
   const s = farmSession(c);
   const data = await body(c, farmFields.partial());
-  const { species, ...rest } = data;
+  const { species, hiddenSections, ...rest } = data;
   await c.get('db').update(schema.farms)
-    .set({ ...rest, ...(species ? { species: JSON.stringify(species) } : {}), updatedAt: now() })
+    .set({
+      ...rest, ...(species ? { species: JSON.stringify(species) } : {}),
+      ...(hiddenSections ? { hiddenSections: JSON.stringify(hiddenSections) } : {}), updatedAt: now(),
+    })
     .where(eq(schema.farms.id, s.farmId));
   await logActivity(c, 'updated', 'farm', s.farmId, 'Updated farm settings');
   return c.json({ ok: true });

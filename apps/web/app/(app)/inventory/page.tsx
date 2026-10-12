@@ -34,7 +34,7 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <PageHeader title="Inventory" description="Feed, medicines, vaccines, fertiliser, fuel and parts in stock."
         actions={can('worker') && <Button onClick={() => setSheet({ kind: 'item' })}><Plus />Add item</Button>} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Items" value={data.length} icon={Boxes} />
         <StatCard label="Low stock" value={data.filter((i) => i.lowStock).length} icon={AlertTriangle} tone="wheat" />
         <StatCard label="Expired or expiring" value={data.filter((i) => i.expired || i.expiringSoon).length} icon={AlertTriangle} tone="clay" sub="Within 30 days" />

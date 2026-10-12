@@ -9,6 +9,7 @@ import { Avatar, Card, CardHeader, PageHeader } from '@/components/ui/display'
 import { FormError, FormGrid, TextField, formValues } from '@/components/ui/form'
 import { useToast } from '@/components/ui/overlay'
 import { RoleBadge } from '@/components/shell'
+import { RemindersCard } from '@/components/reminders'
 import { api } from '@/lib/api'
 import { fmtDate, initials } from '@/lib/format'
 import { useSession, useSignOut, useSwitchFarm } from '@/lib/session'
@@ -70,6 +71,8 @@ export default function ProfilePage() {
         </ul>
         <p className="px-5 pb-4 pt-2 text-xs text-stone-400">To leave a farm, open it and go to <Link href="/team" className="underline">Team</Link>.</p>
       </Card>
+
+      <RemindersCard />
 
       <Button variant="secondary" onClick={signOut}><LogOut />Sign out</Button>
     </div>

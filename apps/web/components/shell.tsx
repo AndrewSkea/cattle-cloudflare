@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  BarChart3, Boxes, CalendarDays, Check, ChevronsUpDown, ClipboardList, Gavel, GitBranch, HeartPulse, Landmark, LayoutDashboard, LogOut,
+  BarChart3, Bell, Boxes, CalendarDays, Check, ChevronsUpDown, ClipboardList, Gavel, GitBranch, HeartPulse, Landmark, LayoutDashboard, LogOut,
   Map as MapIcon, Menu as MenuIcon, PawPrint, Plus, Search, Settings, Sprout, Tractor, User, Users, Wallet, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,33 +15,35 @@ import { ROLE_META, speciesInfo } from '@/lib/constants'
 import { Avatar, Badge } from './ui/display'
 import { FeedbackButton } from './feedback'
 import { InstallAppButton } from './install'
+import { type QuickAddKind, QuickAddItems, QuickAddSheets } from './quick-add'
 import { Menu, MenuDivider, MenuItem } from './ui/overlay'
 import type { Role } from '@/lib/types'
 
-interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; min?: Role }
+/** `section`: the item can be hidden in Farm settings (HIDEABLE_SECTIONS) */
+interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; min?: Role; section?: string }
 
 const NAV: { section: string; items: NavItem[] }[] = [
   { section: 'Overview', items: [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/calendar', label: 'Calendar', icon: CalendarDays },
-    { href: '/tasks', label: 'Tasks', icon: ClipboardList },
+    { href: '/calendar', label: 'Calendar', icon: CalendarDays, section: 'calendar' },
+    { href: '/tasks', label: 'Tasks', icon: ClipboardList, section: 'tasks' },
   ] },
   { section: 'Livestock', items: [
     { href: '/livestock', label: 'Animals', icon: PawPrint },
     { href: '/breeding', label: 'Breeding', icon: Sprout },
-    { href: '/health', label: 'Health', icon: HeartPulse },
-    { href: '/families', label: 'Families', icon: GitBranch },
-    { href: '/traceability', label: 'Traceability', icon: Landmark },
+    { href: '/health', label: 'Health', icon: HeartPulse, section: 'health' },
+    { href: '/families', label: 'Families', icon: GitBranch, section: 'families' },
+    { href: '/traceability', label: 'Traceability', icon: Landmark, section: 'traceability' },
   ] },
   { section: 'Farm', items: [
-    { href: '/land', label: 'Land & map', icon: MapIcon },
-    { href: '/equipment', label: 'Equipment', icon: Tractor },
-    { href: '/inventory', label: 'Inventory', icon: Boxes },
+    { href: '/land', label: 'Land & map', icon: MapIcon, section: 'land' },
+    { href: '/equipment', label: 'Equipment', icon: Tractor, section: 'equipment' },
+    { href: '/inventory', label: 'Inventory', icon: Boxes, section: 'inventory' },
   ] },
   { section: 'Business', items: [
-    { href: '/mart', label: 'Mart sales', icon: Gavel },
-    { href: '/finance', label: 'Finances', icon: Wallet, min: 'manager' },
-    { href: '/reports', label: 'Reports', icon: BarChart3 },
+    { href: '/mart', label: 'Mart sales', icon: Gavel, section: 'mart' },
+    { href: '/finance', label: 'Finances', icon: Wallet, min: 'manager', section: 'finance' },
+    { href: '/reports', label: 'Reports', icon: BarChart3, section: 'reports' },
     { href: '/team', label: 'Team', icon: Users },
   ] },
 ]
@@ -85,18 +87,46 @@ function FarmSwitcher() {
   )
 }
 
+/** The nav list scrolls on short screens; a fade at the bottom shows there is more below. */
+function ScrollFade({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null)
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    el.addEventListener('scroll', check, { passive: true })
+    return () => { ro.disconnect(); el.removeEventListener('scroll', check) }
+  }, [])
+  return (
+    <div className="relative min-h-0 flex-1">
+      <nav ref={ref} className="h-full space-y-4 overflow-y-auto px-3 py-3 scrollbar-thin">{children}</nav>
+      <div aria-hidden className={cn('pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-brand-900 to-transparent transition-opacity', more ? 'opacity-100' : 'opacity-0')} />
+    </div>
+  )
+}
+
+/** Menu items this person can use on this farm: role allows it and the farm hasn't hidden the section. */
+function useNavItems() {
+  const { can, shows } = useSession()
+  return (items: NavItem[]) => items.filter((i) => (!i.min || can(i.min)) && (!i.section || shows(i.section)))
+}
+
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
-  const { can } = useSession()
+  const visible = useNavItems()
   return (
     <div className="flex h-full flex-col bg-brand-900 text-brand-100">
       <div className="px-4 pb-2 pt-5">
         <Link href="/dashboard" onClick={onNavigate}><Logo light /></Link>
       </div>
       <div className="px-2 pb-2 pt-3"><FarmSwitcher /></div>
-      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3 scrollbar-thin">
+      <ScrollFade>
         {NAV.map((g) => {
-          const items = g.items.filter((i) => !i.min || can(i.min))
+          const items = visible(g.items)
           if (!items.length) return null
           return (
             <div key={g.section}>
@@ -107,7 +137,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   return (
                     <li key={i.href}>
                       <Link href={i.href} onClick={onNavigate} aria-current={active ? 'page' : undefined}
-                        className={cn('group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition',
+                        className={cn('group flex items-center gap-3 rounded-lg px-2.5 py-1.5 text-sm font-medium transition',
                           active ? 'bg-white/10 text-white' : 'text-brand-100/80 hover:bg-white/5 hover:text-white')}>
                         <i.icon className={cn('size-[18px]', active ? 'text-wheat-300' : 'text-brand-300/80 group-hover:text-brand-200')} />
                         {i.label}
@@ -119,7 +149,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           )
         })}
-      </nav>
+      </ScrollFade>
       <div className="space-y-0.5 border-t border-white/10 p-3">
         <InstallAppButton className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-brand-100/80 transition hover:bg-white/5 hover:text-white" />
         <Link href="/settings" onClick={onNavigate} className={cn('flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition',
@@ -134,12 +164,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 function QuickFind({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: animals = [] } = useAnimalOptions()
   const router = useRouter()
+  const visible = useNavItems()
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (open) { setQ(''); setActive(0); setTimeout(() => inputRef.current?.focus(), 30) } }, [open])
 
-  const pages = NAV.flatMap((g) => g.items).concat([{ href: '/settings', label: 'Farm settings', icon: Settings }, { href: '/profile', label: 'Profile', icon: User }])
+  const pages = visible(NAV.flatMap((g) => g.items)).concat([{ href: '/settings', label: 'Farm settings', icon: Settings }, { href: '/profile', label: 'Profile', icon: User }])
   const results = useMemo(() => {
     const s = q.trim().toLowerCase()
     const pageHits = pages.filter((p) => !s || p.label.toLowerCase().includes(s)).map((p) => ({ key: p.href, label: p.label, sub: 'Page', href: p.href, emoji: null as string | null }))
@@ -182,6 +213,48 @@ function QuickFind({ open, onClose }: { open: boolean; onClose: () => void }) {
         </ul>
       </div>
     </div>
+  )
+}
+
+/** Phone-only tab bar: the pages used out in the field, with Quick add in the middle. */
+function BottomBar() {
+  const pathname = usePathname()
+  const { can, shows } = useSession()
+  const [sheet, setSheet] = useState<QuickAddKind>(null)
+  const tabs: NavItem[] = [
+    { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
+    { href: '/livestock', label: 'Animals', icon: PawPrint },
+    { href: '/breeding', label: 'Breeding', icon: Sprout },
+    shows('tasks') ? { href: '/tasks', label: 'Tasks', icon: ClipboardList } : { href: '/reports', label: 'Reports', icon: BarChart3 },
+  ]
+  const tab = (t: NavItem) => {
+    const active = pathname === t.href || pathname.startsWith(t.href + '/')
+    return (
+      <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined}
+        className={cn('flex flex-1 flex-col items-center gap-0.5 pb-1 pt-2 text-[11px] font-medium', active ? 'text-brand-800' : 'text-stone-500')}>
+        <t.icon className={cn('size-[22px]', active ? 'text-brand-700' : 'text-stone-400')} />{t.label}
+      </Link>
+    )
+  }
+  return (
+    <>
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+        <div className="mx-auto flex max-w-md items-stretch">
+          {tabs.slice(0, 2).map(tab)}
+          <div className="flex flex-1 items-center justify-center">
+            {can('worker') ? (
+              <Menu side="top" align="center" trigger={
+                <button aria-label="Quick add" className="grid size-12 place-items-center rounded-full bg-brand-700 text-white shadow-lift transition active:scale-95 focus-ring"><Plus className="size-6" /></button>
+              }>
+                <QuickAddItems onPick={setSheet} />
+              </Menu>
+            ) : <span />}
+          </div>
+          {tabs.slice(2).map(tab)}
+        </div>
+      </nav>
+      <QuickAddSheets sheet={sheet} onClose={() => setSheet(null)} />
+    </>
   )
 }
 
@@ -234,6 +307,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
                 <MenuDivider />
                 <MenuItem icon={User} href="/profile">Profile</MenuItem>
+                <MenuItem icon={Bell} href="/profile#reminders">Reminders</MenuItem>
                 <MenuItem icon={Settings} href="/settings">Farm settings</MenuItem>
                 <MenuDivider />
                 <MenuItem icon={LogOut} onClick={signOut}>Sign out</MenuItem>
@@ -241,8 +315,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
       </div>
+      <BottomBar />
       <QuickFind open={findOpen} onClose={() => setFindOpen(false)} />
     </div>
   )

@@ -60,7 +60,7 @@ function TraceabilityInner() {
   return (
     <div className="space-y-6">
       <PageHeader title="Traceability" description="Cattle identification and reporting — what ScotEID needs from you, and whether your records agree with theirs." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Overdue reports" value={fmtNum(overdue)} icon={AlertTriangle} tone={overdue ? 'clay' : 'stone'} sub="Past the legal deadline" />
         <StatCard label="Reports due" value={fmtNum(due)} icon={CalendarClock} tone="wheat" sub="Births, deaths and moves" />
         <StatCard label="Ear tag problems" value={fmtNum(tags.data.length)} icon={Tag} tone={tags.data.length ? 'wheat' : 'stone'} sub="Failed the UK check digit" />

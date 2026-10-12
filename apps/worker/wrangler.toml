@@ -7,9 +7,9 @@ workers_dev = false
 preview_urls = false
 routes = [{ pattern = "hooveswho.andrewskea.com", custom_domain = true }]
 
-# Orkney Mart sales reports are checked every 3 hours.
+# Orkney Mart sales reports are checked every 3 hours; reminder notifications go out daily at 07:00 UTC (src/index.ts DAILY_CRON).
 [triggers]
-crons = ["17 */3 * * *"]
+crons = ["17 */3 * * *", "0 7 * * *"]
 
 [observability]
 enabled = true
@@ -32,6 +32,8 @@ migrations_dir = "src/db/migrations"
 [vars]
 ENVIRONMENT = "production"
 FEEDBACK_REPO = "AndrewSkea/cattle-cloudflare"
+# Web Push public key for reminder notifications; its private half is the VAPID_PRIVATE_KEY secret.
+VAPID_PUBLIC_KEY = "BKRC_8eXTEf0UH3-5gPopKg5dD1c1peJ7bm08RebCjF6LKhzED8h9k8ha-qXsSqNox1DvQSbFeP3YD5RYjUfLY8"
 
-# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_FEEDBACK_TOKEN
+# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_FEEDBACK_TOKEN, VAPID_PRIVATE_KEY
 # Local development: copy .dev.vars.example to .dev.vars

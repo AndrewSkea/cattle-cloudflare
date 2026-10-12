@@ -20,6 +20,8 @@ import financeRoutes from './routes/finance';
 import dashboardRoutes from './routes/dashboard';
 import martRoutes from './routes/mart';
 import feedbackRoutes from './routes/feedback';
+import pushRoutes from './routes/push';
+import { sendDailyReminders } from './services/reminders';
 import { compliance, scoteid, scoteidMock } from './routes/compliance';
 import { syncOrkneyMart } from './services/mart/orkney';
 
@@ -77,6 +79,7 @@ app.route('/api/mart', martRoutes);
 app.route('/api/compliance', compliance);
 app.route('/api/scoteid', scoteid);
 app.route('/api/feedback', feedbackRoutes);
+app.route('/api/push', pushRoutes);
 
 app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
@@ -89,10 +92,20 @@ app.onError((err, c) => {
   return c.json({ error: 'Something went wrong. Please try again.' }, 500);
 });
 
+/** 07:00 UTC: 8am in summer, 7am in winter — before the day's work starts either way. Must match wrangler.toml. */
+const DAILY_CRON = '0 7 * * *';
+
 export default {
   fetch: app.fetch,
-  /** Cron: pick up new Orkney Mart sales reports and match them to farms. */
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  /** Crons: the morning reminder (DAILY_CRON), otherwise pick up new Orkney Mart sales reports and match them to farms. */
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (event.cron === DAILY_CRON) {
+      ctx.waitUntil(sendDailyReminders(getDrizzleClient(env.DB), env).then(
+        (r) => console.log('reminders', JSON.stringify(r)),
+        (e) => console.error('reminders failed', e),
+      ));
+      return;
+    }
     ctx.waitUntil(syncOrkneyMart(getDrizzleClient(env.DB), { days: 21 }).then(
       (r) => console.log('mart sync', JSON.stringify(r)),
       (e) => console.error('mart sync failed', e),

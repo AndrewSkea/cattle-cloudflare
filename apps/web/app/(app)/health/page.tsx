@@ -55,7 +55,7 @@ function HealthInner() {
           <Button onClick={() => setSheet({ kind: 'record' })}><Plus />Add record</Button>
         </>} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Overdue" value={overdue.length} icon={CalendarClock} tone={overdue.length ? 'clay' : 'brand'} sub="Boosters & follow-ups" />
         <StatCard label="Due in 30 days" value={soon.length} icon={CalendarClock} tone="sky" />
         <StatCard label="In withdrawal" value={new Set((withdrawals.data || []).map((w) => w.animalId)).size} icon={ShieldAlert} tone="wheat" sub="Do not sell for meat" />

@@ -93,7 +93,45 @@ finance.post('/transactions', async (c) => {
   return c.json({ data: r }, 201);
 });
 
-const AUTO_MESSAGE = 'This entry was created automatically from another record (sale, purchase, vet or equipment cost). Edit that record instead.';
+const importRow = z.object({
+  type: z.enum(['income', 'expense']),
+  category: z.string(),
+  amount: money.refine((v) => v > 0, 'must be more than zero'),
+  date: isoDate,
+  description: optText(500),
+  counterparty: optText(150),
+  reference: optText(100),
+}).superRefine((d, ctx) => {
+  const allowed: readonly string[] = d.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  if (!allowed.includes(d.category)) ctx.addIssue({ code: 'custom', path: ['category'], message: `is not a valid ${d.type} category` });
+});
+
+const dupKey = (r: { date: string; type: string; amount: number; description: string | null | undefined }) =>
+  `${r.date}|${r.type}|${r.amount.toFixed(2)}|${(r.description || '').trim().toLowerCase()}`;
+
+/** Bank statement import: rows already mapped and categorised in the browser. Rows matching an existing entry are skipped. */
+finance.post('/import', async (c) => {
+  const s = farmSession(c);
+  const db = c.get('db');
+  const { rows } = await body(c, z.object({ rows: z.array(importRow).min(1).max(2000) }));
+  const dates = rows.map((r) => r.date).sort();
+  const existing = await db.select({ date: schema.transactions.date, type: schema.transactions.type, amount: schema.transactions.amount, description: schema.transactions.description })
+    .from(schema.transactions)
+    .where(and(eq(schema.transactions.farmId, s.farmId), gte(schema.transactions.date, dates[0]), lte(schema.transactions.date, dates[dates.length - 1]))).all();
+  const seen = new Set(existing.map(dupKey));
+  const fresh = [];
+  for (const r of rows) {
+    const k = dupKey(r);
+    if (seen.has(k)) continue;
+    seen.add(k); // the same line twice in one file counts once
+    fresh.push({ ...r, farmId: s.farmId, createdBy: s.userId });
+  }
+  for (let i = 0; i < fresh.length; i += 10) await db.insert(schema.transactions).values(fresh.slice(i, i + 10));
+  if (fresh.length) await logActivity(c, 'created', 'transaction', null, `Imported ${fresh.length} bank transaction${fresh.length === 1 ? '' : 's'}`);
+  return c.json({ data: { imported: fresh.length, duplicates: rows.length - fresh.length } }, 201);
+});
+
+const AUTO_MESSAGE ='This entry was created automatically from another record (sale, purchase, vet or equipment cost). Edit that record instead.';
 
 finance.put('/transactions/:id', async (c) => {
   const s = farmSession(c);

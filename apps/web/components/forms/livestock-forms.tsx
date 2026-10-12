@@ -300,10 +300,13 @@ export function BreedingSheet({ open, onClose, record, animalId }: { open: boole
 
 // ============================ BIRTH ============================
 
-export function BirthSheet({ open, onClose, record, damId }: { open: boolean; onClose: () => void; record?: BirthRecord | null; damId?: number | null }) {
+/** `sire`: prefill from the service the calf came from (the calving list passes it). */
+export function BirthSheet({ open, onClose, record, damId, sire }: {
+  open: boolean; onClose: () => void; record?: BirthRecord | null; damId?: number | null; sire?: { id: number | null; name: string | null }
+}) {
   const { data: options = [] } = useAnimalOptions()
   const [dam, setDam] = useState<number | null>(record?.damId ?? damId ?? null)
-  const [sireId, setSireId] = useState<number | null>(record?.sireId ?? null)
+  const [sireId, setSireId] = useState<number | null>(record?.sireId ?? sire?.id ?? null)
   const [outcome, setOutcome] = useState<'alive' | 'stillborn' | 'died'>(record?.outcome || 'alive')
   const [sex, setSex] = useState<'female' | 'male' | ''>((record?.sex as any) || '')
   const [register, setRegister] = useState(!record)
@@ -337,7 +340,7 @@ export function BirthSheet({ open, onClose, record, damId }: { open: boolean; on
           <SelectField label="Ease" name="ease" defaultValue={record?.ease ?? 'unassisted'} options={BIRTH_EASE} />
           <TextField label="Birth weight" name="birthWeightKg" type="number" step="0.1" min={0} suffix="kg" defaultValue={record?.birthWeightKg ?? ''} />
           <Field label="Sire on farm"><Picker label="Sire on farm" options={animalOptions(options, (a) => a.sex === 'male' && (!damA || a.species === damA.species))} value={sireId} onChange={setSireId} placeholder="Search males…" /></Field>
-          {!sireId && <TextField label="Sire name / breed" name="sireName" defaultValue={record?.sireName ?? ''} />}
+          {!sireId && <TextField label="Sire name / breed" name="sireName" defaultValue={record?.sireName ?? sire?.name ?? ''} />}
         </FormGrid>
         {!record && outcome === 'alive' && (
           <div className="space-y-4 rounded-xl bg-brand-50/60 p-4 ring-1 ring-brand-100">
@@ -498,6 +501,95 @@ export function RenumberSheet({ open, onClose, animalIds }: { open: boolean; onC
             </div>
           </>
         )}
+        <FormError error={error} />
+      </form>
+    </Sheet>
+  )
+}
+
+type ScanChoice = 'pregnant' | 'twins' | 'empty' | 'unknown' | ''
+
+/**
+ * Scan results for a whole batch on the scanner's visit: every female with a service still waiting for a result,
+ * one tap each. Others can be added from the picker (e.g. cows with the bull but no recorded service).
+ */
+export function ScanSheet({ open, onClose, breeding }: { open: boolean; onClose: () => void; breeding: BreedingRecord[] }) {
+  const { data: options = [] } = useAnimalOptions()
+  const [date, setDate] = useState(todayISO())
+  const [error, setError] = useState<string | null>(null)
+  const [extra, setExtra] = useState<number[]>([])
+  const [adding, setAdding] = useState<number | null>(null)
+  const [choice, setChoice] = useState<Record<number, ScanChoice>>({})
+
+  // Females whose latest pending record is a service (no scan since), in tag order
+  const waiting = useMemo(() => {
+    const latest = new Map<number, BreedingRecord>()
+    for (const b of breeding) {
+      if (b.outcome !== 'pending' || b.event === 'heat' || b.animalStatus !== 'active') continue
+      const cur = latest.get(b.animalId)
+      if (!cur || b.date > cur.date || (b.date === cur.date && b.id > cur.id)) latest.set(b.animalId, b)
+    }
+    return [...latest.values()].filter((b) => b.event === 'service')
+      .sort((a, b) => (a.animalTag || '').localeCompare(b.animalTag || '', undefined, { numeric: true }))
+  }, [breeding])
+  const rows = [
+    ...waiting.map((b) => ({ id: b.animalId, tag: b.animalTag || `#${b.animalId}`, sub: `Served ${fmtDate(b.date)}${b.sireTag || b.sireName ? ` · ${b.sireTag || b.sireName}` : ''}` })),
+    ...extra.map((id) => { const a = options.find((o) => o.id === id); return { id, tag: a ? animalLabel(a) : `#${id}`, sub: 'No service recorded' } }),
+  ]
+  const set = (id: number, v: ScanChoice) => setChoice((c) => ({ ...c, [id]: c[id] === v ? '' : v }))
+  const counts = Object.values(choice).reduce((m, v) => { if (v) m[v === 'twins' ? 'pregnant' : v] = (m[v === 'twins' ? 'pregnant' : v] || 0) + 1; return m }, {} as Record<string, number>)
+  const chosen = rows.filter((r) => choice[r.id])
+
+  const save = useSave((body: any) => api.post<{ data: { saved: number; pregnant: number; empty: number } }>('/api/breeding/scans', body).then((r) => r.data), {
+    invalidate: LIVESTOCK, silentError: true, onSuccess: onClose,
+    success: (r) => `Saved ${r.saved} scan result${r.saved === 1 ? '' : 's'}: ${r.pregnant} in calf, ${r.empty} empty`,
+  })
+  const OPTIONS: { v: ScanChoice; label: string; on: string }[] = [
+    { v: 'pregnant', label: 'In calf', on: 'bg-emerald-600 text-white ring-emerald-600' },
+    { v: 'twins', label: 'Twins', on: 'bg-emerald-700 text-white ring-emerald-700' },
+    { v: 'empty', label: 'Empty', on: 'bg-clay-600 text-white ring-clay-600' },
+    { v: 'unknown', label: 'Unsure', on: 'bg-stone-600 text-white ring-stone-600' },
+  ]
+  return (
+    <Sheet open={open} onClose={onClose} wide title="Scan results"
+      description="Tap a result for each cow scanned. Cows left blank aren’t changed. In-calf cows keep the due date from their service."
+      footer={<SheetFooter formId="scan-form" onClose={onClose} busy={save.isPending} label={chosen.length ? `Save ${chosen.length} result${chosen.length === 1 ? '' : 's'}` : 'Save'} />}>
+      <form id="scan-form" className="space-y-5" onSubmit={(e) => {
+        e.preventDefault()
+        if (!chosen.length) return setError('Choose a result for at least one cow')
+        save.mutate({
+          date,
+          results: chosen.map((r) => ({ animalId: r.id, result: choice[r.id] === 'twins' ? 'pregnant' : choice[r.id], fetusCount: choice[r.id] === 'twins' ? 2 : choice[r.id] === 'pregnant' ? 1 : null })),
+        }, { onError: (err) => setError(err.message) })
+      }}>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Scan date" required><Input type="date" aria-label="Scan date" value={date} onChange={(e) => setDate(e.target.value)} max={todayISO()} required className="w-44" /></Field>
+          {rows.length > 0 && (
+            <Button size="sm" variant="secondary" onClick={() => setChoice(Object.fromEntries(rows.map((r) => [r.id, choice[r.id] || 'pregnant'])))}>Mark the rest in calf</Button>
+          )}
+          <p className="ml-auto text-sm text-stone-500">{counts.pregnant || 0} in calf · {counts.empty || 0} empty{counts.unknown ? ` · ${counts.unknown} unsure` : ''}</p>
+        </div>
+        {rows.length === 0 && <p className="rounded-xl bg-stone-50 p-4 text-sm text-stone-600">No services are waiting for a scan result. Add a cow below to record her scan.</p>}
+        <ul className="divide-y divide-stone-100 rounded-xl ring-1 ring-stone-200">
+          {rows.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+              <div className="w-full min-w-0 sm:w-auto sm:flex-1">
+                <p className="font-semibold text-stone-900">{r.tag}</p>
+                <p className="truncate text-xs text-stone-500">{r.sub}</p>
+              </div>
+              <div className="flex gap-1" role="radiogroup" aria-label={`Scan result for ${r.tag}`}>
+                {OPTIONS.map((o) => (
+                  <button key={o.v} type="button" role="radio" aria-checked={choice[r.id] === o.v} onClick={() => set(r.id, o.v)}
+                    className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 transition ${choice[r.id] === o.v ? o.on : 'bg-white text-stone-600 ring-stone-200 hover:ring-stone-300'}`}>{o.label}</button>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <Field label="Add another cow">
+          <Picker label="Add another cow" options={animalOptions(options, (a) => a.sex === 'female' && a.status === 'active' && !rows.some((r) => r.id === a.id))}
+            value={adding} onChange={(id) => { if (id) { setExtra((x) => [...x, id]); setAdding(null) } }} placeholder="Search females…" />
+        </Field>
         <FormError error={error} />
       </form>
     </Sheet>

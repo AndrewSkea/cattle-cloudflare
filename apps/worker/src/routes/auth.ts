@@ -184,7 +184,7 @@ auth.get('/me', async (c) => {
   return c.json({
     user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl, phone: user.phone, createdAt: user.createdAt },
     farms,
-    farm: farm ? { ...farm, species: JSON.parse(farm.species || '[]') } : null,
+    farm: farm ? { ...farm, species: JSON.parse(farm.species || '[]'), hiddenSections: JSON.parse(farm.hiddenSections || '[]') } : null,
     role: s.role,
   });
 });

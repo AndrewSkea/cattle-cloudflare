@@ -14,6 +14,8 @@ export const optId = z.coerce.number().int().positive().nullish().or(z.literal('
 export const money = z.coerce.number().finite().min(0).max(100_000_000);
 
 export const SPECIES = ['cattle', 'sheep', 'goat', 'pig', 'horse', 'poultry', 'other'] as const;
+/** Menu sections a farm can hide in settings (Dashboard, Animals, Breeding, Team and settings always show). */
+export const HIDEABLE_SECTIONS = ['calendar', 'tasks', 'health', 'families', 'traceability', 'land', 'equipment', 'inventory', 'mart', 'finance', 'reports'] as const;
 export const ANIMAL_STATUS = ['active', 'sold', 'died', 'culled', 'missing'] as const;
 export const HEALTH_TYPES = ['vaccination', 'treatment', 'test', 'procedure', 'vet_visit', 'observation', 'injury'] as const;
 export const LAND_USES = ['pasture', 'silage', 'hay', 'arable', 'woodland', 'yard', 'other'] as const;

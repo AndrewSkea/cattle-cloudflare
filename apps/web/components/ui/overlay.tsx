@@ -163,7 +163,9 @@ export const useConfirm = () => useContext(ConfirmCtx)
 
 // ---------------- Dropdown menu ----------------
 
-export function Menu({ trigger, children, align = 'right', className }: { trigger: React.ReactNode; children: React.ReactNode; align?: 'left' | 'right'; className?: string }) {
+export function Menu({ trigger, children, align = 'right', side = 'bottom', className }: {
+  trigger: React.ReactNode; children: React.ReactNode; align?: 'left' | 'right' | 'center'; side?: 'bottom' | 'top'; className?: string
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -179,7 +181,9 @@ export function Menu({ trigger, children, align = 'right', className }: { trigge
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div role="menu" onClick={() => setOpen(false)}
-          className={cn('absolute z-40 mt-1.5 min-w-48 animate-scale-in overflow-hidden rounded-xl bg-white p-1 shadow-pop ring-1 ring-stone-900/10', align === 'right' ? 'right-0' : 'left-0')}>
+          className={cn('absolute z-40 min-w-48 animate-scale-in overflow-hidden rounded-xl bg-white p-1 shadow-pop ring-1 ring-stone-900/10',
+            side === 'top' ? 'bottom-full mb-2' : 'mt-1.5',
+            align === 'right' ? 'right-0' : align === 'center' ? 'left-1/2 -ml-24 w-48' : 'left-0')}>
           {children}
         </div>
       )}

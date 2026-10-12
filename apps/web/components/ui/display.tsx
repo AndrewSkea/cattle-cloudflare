@@ -60,14 +60,14 @@ export function StatCard({ label, value, sub, icon: Icon, tone = 'brand', href, 
     brand: 'bg-brand-50 text-brand-700', wheat: 'bg-wheat-50 text-wheat-700', clay: 'bg-clay-50 text-clay-700', sky: 'bg-sky-50 text-sky-700', stone: 'bg-stone-100 text-stone-700',
   }
   const inner = (
-    <Card className={cn('h-full p-5 transition', href && 'hover:shadow-lift hover:ring-stone-900/10')}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[13px] font-medium text-stone-500">{label}</p>
-        {Icon && <div className={cn('grid size-8 place-items-center rounded-lg', tones[tone])}><Icon className="size-4" /></div>}
+    <Card className={cn('h-full p-4 transition sm:p-5', href && 'hover:shadow-lift hover:ring-stone-900/10')}>
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <p className="min-w-0 text-[13px] font-medium leading-snug text-stone-500">{label}</p>
+        {Icon && <div className={cn('hidden size-8 shrink-0 place-items-center rounded-lg sm:grid', tones[tone])}><Icon className="size-4" /></div>}
       </div>
-      <p className="mt-2 font-display text-[28px] font-semibold leading-none tracking-tight text-stone-900 tabular">{value}</p>
+      <p className="mt-2 break-words font-display text-[22px] font-semibold leading-none tracking-tight text-stone-900 tabular sm:text-[28px]">{value}</p>
       {(sub || trend) && (
-        <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs leading-snug text-stone-500">
           {trend && (
             <span className={cn('inline-flex items-center gap-0.5 font-medium', trend.positive ? 'text-emerald-700' : 'text-clay-700')}>
               {trend.positive ? <ArrowUpRight className="size-3.5" /> : <ArrowDownRight className="size-3.5" />}{trend.value}
@@ -106,7 +106,7 @@ export function PageSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-9 w-56" />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}
       </div>
       <Skeleton className="h-80 rounded-2xl" />

@@ -9,14 +9,13 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardHeader, EmptyState, PageHeader, PageSkeleton, StatCard } from '@/components/ui/display'
-import { Menu, MenuItem } from '@/components/ui/overlay'
+import { Menu } from '@/components/ui/overlay'
 import { WeatherCard } from '@/components/weather'
-import { AnimalSheet, BirthSheet, HealthSheet, WeightSheet } from '@/components/forms/livestock-forms'
-import { TaskSheet, TransactionSheet } from '@/components/forms/other-forms'
+import { type QuickAddKind, QuickAddItems, QuickAddSheets } from '@/components/quick-add'
 import { api, useSave } from '@/lib/queries'
 import { getData } from '@/lib/api'
 import { CATEGORY_LABELS, speciesInfo } from '@/lib/constants'
-import { fmtArea, fmtDue, fmtMoney, fmtNum, fmtRelative } from '@/lib/format'
+import { fmtArea, fmtDate, fmtDue, fmtMoney, fmtNum, fmtRelative } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/lib/types'
@@ -34,6 +33,7 @@ interface Dashboard {
     compliance: { overdue: number; dueSoon: number; tagIssues: number }
   }
   tasks: { open: number; overdue: number; mine: Task[]; upcoming: Task[] }
+  calving: { pregnant: number; next: string | null; soon: number; overdue: number }
   money: { income: number; expense: number; net: number } | null
   activity: { id: number; summary: string; createdAt: string; userName: string | null; userEmail: string | null; entity: string; entityId: number | null }[]
 }
@@ -43,11 +43,10 @@ function greeting() {
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
 
-type Sheet = null | 'animal' | 'health' | 'birth' | 'weight' | 'task' | 'income' | 'expense'
 
 export default function DashboardPage() {
-  const { user, farm, can, currency } = useSession()
-  const [sheet, setSheet] = useState<Sheet>(null)
+  const { user, farm, can, currency, shows } = useSession()
+  const [sheet, setSheet] = useState<QuickAddKind>(null)
   const { data, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: () => getData<Dashboard>('/api/dashboard') })
   const complete = useSave((id: number) => api.put(`/api/tasks/${id}`, { status: 'done' }), { invalidate: ['tasks'], success: 'Task done' })
 
@@ -56,18 +55,18 @@ export default function DashboardPage() {
   const overdueBirths = alerts.dueBirths.filter((b) => b.overdue)
 
   const attention = [
-    ...(alerts.compliance.overdue ? [{ key: 'cmp', icon: Landmark, tone: 'red' as const, text: `${alerts.compliance.overdue} ScotEID report${alerts.compliance.overdue === 1 ? '' : 's'} overdue`, meta: 'Births, deaths or movements past their deadline', href: '/traceability' }] : []),
-    ...(alerts.compliance.dueSoon ? [{ key: 'cmp2', icon: Landmark, tone: 'amber' as const, text: `${alerts.compliance.dueSoon} ScotEID report${alerts.compliance.dueSoon === 1 ? '' : 's'} due within 3 days`, meta: 'Births, deaths or movements', href: '/traceability' }] : []),
-    ...(alerts.martNew ? [{ key: 'mart', icon: Gavel, tone: 'amber' as const, text: `${alerts.martNew} mart sale${alerts.martNew === 1 ? '' : 's'} to review`, meta: 'Found in Orkney Mart reports — import them as sales', href: '/mart' }] : []),
-    ...(alerts.compliance.tagIssues ? [{ key: 'tags', icon: Tag, tone: 'amber' as const, text: `${alerts.compliance.tagIssues} ear tag number${alerts.compliance.tagIssues === 1 ? '' : 's'} look wrong`, meta: 'Failed the UK check-digit test', href: '/traceability?tab=tags' }] : []),
+    ...(alerts.compliance.overdue && shows('traceability') ? [{ key: 'cmp', icon: Landmark, tone: 'red' as const, text: `${alerts.compliance.overdue} ScotEID report${alerts.compliance.overdue === 1 ? '' : 's'} overdue`, meta: 'Births, deaths or movements past their deadline', href: '/traceability' }] : []),
+    ...(alerts.compliance.dueSoon && shows('traceability') ? [{ key: 'cmp2', icon: Landmark, tone: 'amber' as const, text: `${alerts.compliance.dueSoon} ScotEID report${alerts.compliance.dueSoon === 1 ? '' : 's'} due within 3 days`, meta: 'Births, deaths or movements', href: '/traceability' }] : []),
+    ...(alerts.martNew && shows('mart') ? [{ key: 'mart', icon: Gavel, tone: 'amber' as const, text: `${alerts.martNew} mart sale${alerts.martNew === 1 ? '' : 's'} to review`, meta: 'Found in Orkney Mart reports — import them as sales', href: '/mart' }] : []),
+    ...(alerts.compliance.tagIssues && shows('traceability') ? [{ key: 'tags', icon: Tag, tone: 'amber' as const, text: `${alerts.compliance.tagIssues} ear tag number${alerts.compliance.tagIssues === 1 ? '' : 's'} look wrong`, meta: 'Failed the UK check-digit test', href: '/traceability?tab=tags' }] : []),
     ...alerts.healthDue.filter((h) => h.overdue).map((h) => ({ key: `h${h.id}`, icon: HeartPulse, tone: 'red' as const, text: `${h.title}: ${h.animalTag}`, meta: `overdue ${fmtDue(h.date)}`, href: `/livestock/view?id=${h.animalId}&tab=health` })),
     ...(overdueBirths.length > 3
       ? [{ key: 'births', icon: Baby, tone: 'amber' as const, text: `${overdueBirths.length} pregnancies past their due date`, meta: 'Record the births, or mark them not in calf', href: '/breeding' }]
       : overdueBirths.map((b) => ({ key: `b${b.id}`, icon: Baby, tone: 'amber' as const, text: `${b.animalTag} past due date`, meta: fmtDue(b.date), href: `/livestock/view?id=${b.animalId}&tab=breeding` }))),
-    ...alerts.equipment.filter((e) => e.serviceState === 'overdue').map((e) => ({ key: `e${e.id}`, icon: Tractor, tone: 'red' as const, text: e.name, meta: e.serviceReasons[0] || 'Service overdue', href: `/equipment/view?id=${e.id}` })),
-    ...alerts.stock.map((s) => ({ key: `s${s.id}`, icon: Boxes, tone: s.reason === 'Expired' ? 'red' as const : 'amber' as const, text: s.name, meta: `${s.reason} · ${fmtNum(s.quantity, 1)} ${s.unit}`, href: '/inventory' })),
+    ...alerts.equipment.filter((e) => shows('equipment') && e.serviceState === 'overdue').map((e) => ({ key: `e${e.id}`, icon: Tractor, tone: 'red' as const, text: e.name, meta: e.serviceReasons[0] || 'Service overdue', href: `/equipment/view?id=${e.id}` })),
+    ...alerts.stock.filter(() => shows('inventory')).map((s) => ({ key: `s${s.id}`, icon: Boxes, tone: s.reason === 'Expired' ? 'red' as const : 'amber' as const, text: s.name, meta: `${s.reason} · ${fmtNum(s.quantity, 1)} ${s.unit}`, href: '/inventory' })),
     ...alerts.withdrawals.map((w) => ({ key: `w${w.id}`, icon: ShieldAlert, tone: 'amber' as const, text: `${w.animalTag} withdrawal (${w.title})`, meta: `until ${w.until}`, href: `/livestock/view?id=${w.animalId}&tab=health` })),
-    ...alerts.equipment.filter((e) => e.serviceState !== 'overdue').map((e) => ({ key: `e2${e.id}`, icon: Tractor, tone: 'amber' as const, text: e.name, meta: e.serviceReasons[0] || 'Service due soon', href: `/equipment/view?id=${e.id}` })),
+    ...alerts.equipment.filter((e) => shows('equipment') && e.serviceState !== 'overdue').map((e) => ({ key: `e2${e.id}`, icon: Tractor, tone: 'amber' as const, text: e.name, meta: e.serviceReasons[0] || 'Service due soon', href: `/equipment/view?id=${e.id}` })),
   ]
   const upcoming = [
     ...alerts.healthDue.filter((h) => !h.overdue).map((h) => ({ key: `h${h.id}`, date: h.date, text: `${h.title}: ${h.animalTag}`, kind: 'Health', href: `/livestock/view?id=${h.animalId}&tab=health` })),
@@ -84,25 +83,21 @@ export default function DashboardPage() {
         description={`Here’s what’s happening on ${farm.name}.`}
         actions={can('worker') && (
           <Menu trigger={<Button><Plus />Quick add</Button>}>
-            <MenuItem icon={PawPrint} onClick={() => setSheet('animal')}>Animal</MenuItem>
-            <MenuItem icon={HeartPulse} onClick={() => setSheet('health')}>Health record</MenuItem>
-            <MenuItem icon={Baby} onClick={() => setSheet('birth')}>Birth</MenuItem>
-            <MenuItem icon={TrendingUp} onClick={() => setSheet('weight')}>Weight</MenuItem>
-            <MenuItem icon={ClipboardList} onClick={() => setSheet('task')}>Task</MenuItem>
-            {can('manager') && <MenuItem icon={Wallet} onClick={() => setSheet('expense')}>Expense</MenuItem>}
-            {can('manager') && <MenuItem icon={Landmark} onClick={() => setSheet('income')}>Income</MenuItem>}
+            <QuickAddItems onPick={setSheet} />
           </Menu>
         )}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Animals on farm" value={fmtNum(totals.activeAnimals)} icon={PawPrint} href="/livestock"
           sub={speciesKeys.map((s) => `${herd[s].total} ${speciesInfo(s).plural.toLowerCase()}`).join(' · ') || 'None yet'} />
         <StatCard label="Born this year" value={fmtNum(totals.birthsThisYear)} icon={Baby} tone="wheat" href="/breeding?tab=births"
           sub={totals.birthLossesThisYear ? `${totals.birthLossesThisYear} lost at birth` : 'No losses recorded'} />
-        <StatCard label="Due to give birth" value={fmtNum(alerts.dueBirths.length)} icon={Sprout} tone="sky" href="/breeding"
-          sub={alerts.dueBirths.filter((b) => b.overdue).length ? `${alerts.dueBirths.filter((b) => b.overdue).length} past due date` : 'Next 45 days'} />
-        {data.money ? (
+        <StatCard label="In calf / served" value={fmtNum(data.calving.pregnant)} icon={Sprout} tone="sky" href="/breeding"
+          sub={data.calving.overdue ? `${data.calving.overdue} past due date`
+            : data.calving.soon ? `${data.calving.soon} due in the next 45 days`
+              : data.calving.next ? `Next due ${fmtDate(data.calving.next)}` : 'None recorded'} />
+        {data.money && shows('finance') ? (
           <StatCard label="Net this year" value={fmtMoney(data.money.net, currency, { compact: Math.abs(data.money.net) >= 100000, decimals: false })} icon={Wallet} tone={data.money.net >= 0 ? 'brand' : 'clay'} href="/finance"
             sub={`${fmtMoney(data.money.income, currency, { decimals: false })} in · ${fmtMoney(data.money.expense, currency, { decimals: false })} out`} />
         ) : (
@@ -110,7 +105,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader title="Needs attention" icon={AlertTriangle} description={attention.length ? `${attention.length} item${attention.length === 1 ? '' : 's'}` : undefined} />
@@ -135,10 +130,14 @@ export default function DashboardPage() {
             )}
           </Card>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
               <CardHeader title="Coming up" description="Next 30–45 days" action={<Link href="/calendar" className="text-xs font-medium text-brand-700 hover:underline">Calendar</Link>} />
-              {upcoming.length === 0 ? <p className="px-5 pb-6 pt-4 text-sm text-stone-500">Nothing scheduled.</p> : (
+              {upcoming.length === 0 ? (
+                <p className="px-5 pb-6 pt-4 text-sm text-stone-500">
+                  Nothing scheduled.{data.calving.next && <> Calving starts <Link href="/breeding" className="font-medium text-brand-700 hover:underline">{fmtDate(data.calving.next)}</Link> ({fmtDue(data.calving.next)}).</>}
+                </p>
+              ) : (
                 <ul className="mt-3 space-y-1 px-2 pb-3">
                   {upcoming.map((u) => (
                     <li key={u.key}>
@@ -152,28 +151,30 @@ export default function DashboardPage() {
                 </ul>
               )}
             </Card>
-            <Card>
-              <CardHeader title="Tasks" description={data.tasks.open ? `${data.tasks.open} open${data.tasks.overdue ? ` · ${data.tasks.overdue} overdue` : ''}` : 'Nothing to do'}
-                action={<Link href="/tasks" className="text-xs font-medium text-brand-700 hover:underline">All tasks</Link>} />
-              {(data.tasks.mine.length ? data.tasks.mine : data.tasks.upcoming).length === 0 ? (
-                <div className="px-5 pb-6 pt-4">
-                  {can('worker') ? <Button variant="secondary" size="sm" onClick={() => setSheet('task')}><Plus />Add a task</Button> : <p className="text-sm text-stone-500">No open tasks.</p>}
-                </div>
-              ) : (
-                <ul className="mt-3 space-y-1 px-2 pb-3">
-                  {(data.tasks.mine.length ? data.tasks.mine : data.tasks.upcoming).slice(0, 6).map((t) => (
-                    <li key={t.id} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-stone-50">
-                      {can('worker') && (
-                        <button onClick={() => complete.mutate(t.id)} aria-label={`Mark ${t.title} done`}
-                          className="size-4 shrink-0 rounded-full ring-2 ring-stone-300 transition hover:bg-brand-100 hover:ring-brand-500" />
-                      )}
-                      <span className="flex-1 truncate text-sm text-stone-800">{t.title}</span>
-                      {t.dueDate && <span className={cn('shrink-0 text-xs', t.overdue ? 'font-medium text-clay-600' : 'text-stone-400')}>{fmtDue(t.dueDate)}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+            {shows('tasks') && (
+              <Card>
+                <CardHeader title="Tasks" description={data.tasks.open ? `${data.tasks.open} open${data.tasks.overdue ? ` · ${data.tasks.overdue} overdue` : ''}` : 'Nothing to do'}
+                  action={<Link href="/tasks" className="text-xs font-medium text-brand-700 hover:underline">All tasks</Link>} />
+                {(data.tasks.mine.length ? data.tasks.mine : data.tasks.upcoming).length === 0 ? (
+                  <div className="px-5 pb-6 pt-4">
+                    {can('worker') ? <Button variant="secondary" size="sm" onClick={() => setSheet('task')}><Plus />Add a task</Button> : <p className="text-sm text-stone-500">No open tasks.</p>}
+                  </div>
+                ) : (
+                  <ul className="mt-3 space-y-1 px-2 pb-3">
+                    {(data.tasks.mine.length ? data.tasks.mine : data.tasks.upcoming).slice(0, 6).map((t) => (
+                      <li key={t.id} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-stone-50">
+                        {can('worker') && (
+                          <button onClick={() => complete.mutate(t.id)} aria-label={`Mark ${t.title} done`}
+                            className="size-4 shrink-0 rounded-full ring-2 ring-stone-300 transition hover:bg-brand-100 hover:ring-brand-500" />
+                        )}
+                        <span className="flex-1 truncate text-sm text-stone-800">{t.title}</span>
+                        {t.dueDate && <span className={cn('shrink-0 text-xs', t.overdue ? 'font-medium text-clay-600' : 'text-stone-400')}>{fmtDue(t.dueDate)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
           </div>
 
           <Card>
@@ -230,8 +231,8 @@ export default function DashboardPage() {
           <Card className="p-5">
             <p className="text-[13px] font-medium text-stone-500">Farm at a glance</p>
             <dl className="mt-3 grid grid-cols-2 gap-4">
-              <div><dt className="text-xs text-stone-500">Land</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.fields ? fmtArea(totals.landHa, farm.areaUnit) : '—'}</dd><dd className="text-xs text-stone-400">{totals.fields} fields</dd></div>
-              <div><dt className="text-xs text-stone-500">Machinery</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.equipment}</dd><dd className="text-xs text-stone-400">in use</dd></div>
+              {shows('land') && <div><dt className="text-xs text-stone-500">Land</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.fields ? fmtArea(totals.landHa, farm.areaUnit) : '—'}</dd><dd className="text-xs text-stone-400">{totals.fields} fields</dd></div>}
+              {shows('equipment') && <div><dt className="text-xs text-stone-500">Machinery</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.equipment}</dd><dd className="text-xs text-stone-400">in use</dd></div>}
               <div><dt className="text-xs text-stone-500">Sold this year</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.soldThisYear}</dd></div>
               <div><dt className="text-xs text-stone-500">Deaths this year</dt><dd className="font-display text-xl font-semibold text-stone-900">{totals.diedThisYear}</dd></div>
             </dl>
@@ -240,12 +241,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {sheet === 'animal' && <AnimalSheet open onClose={() => setSheet(null)} />}
-      {sheet === 'health' && <HealthSheet open onClose={() => setSheet(null)} />}
-      {sheet === 'birth' && <BirthSheet open onClose={() => setSheet(null)} />}
-      {sheet === 'weight' && <WeightSheet open onClose={() => setSheet(null)} />}
-      {sheet === 'task' && <TaskSheet open onClose={() => setSheet(null)} />}
-      {(sheet === 'income' || sheet === 'expense') && <TransactionSheet open onClose={() => setSheet(null)} defaultType={sheet} />}
+      <QuickAddSheets sheet={sheet} onClose={() => setSheet(null)} />
     </div>
   )
 }

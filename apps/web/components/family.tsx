@@ -59,7 +59,7 @@ export function FamilyView({ report, animalId, currency }: { report: FamilyRepor
   const shown = METRICS.filter((m) => stats[m.key] != null || report.herd[m.key] != null)
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {[
           { label: 'Offspring', value: report.offspring.count, sub: report.offspring.count ? `${report.offspring.females} female · ${report.offspring.males} male` : 'None recorded' },
           { label: 'All descendants', value: report.descendantStats.count, sub: report.generations ? `${report.generations} generation${report.generations === 1 ? '' : 's'}` : '—' },

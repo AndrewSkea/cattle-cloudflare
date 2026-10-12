@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { ArrowDownLeft, ArrowUpRight, Download, Lock, MoreHorizontal, Pencil, Plus, Scale, Search, Trash2, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Download, FileUp, Lock, MoreHorizontal, Pencil, Plus, Scale, Search, Trash2, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, PageSkeleton, StatCard } from '@/components/ui/display'
 import { Select } from '@/components/ui/form'
 import { Menu, MenuItem, useConfirm } from '@/components/ui/overlay'
 import { TransactionSheet } from '@/components/forms/other-forms'
+import { BankImportSheet } from '@/components/forms/bank-import'
 import { api, useSave, useTransactions } from '@/lib/queries'
 import { getData } from '@/lib/api'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryLabel } from '@/lib/constants'
@@ -48,6 +49,7 @@ export default function FinancePage() {
   const summary = useQuery({ queryKey: ['finance', 'summary', from, to], queryFn: () => getData<Summary>(`/api/finance/summary?from=${from}&to=${to}`), enabled: can('manager') })
   const { data: txns } = useTransactions(can('manager'))
   const [sheet, setSheet] = useState<null | { txn?: Transaction; type?: 'income' | 'expense' }>(null)
+  const [importing, setImporting] = useState(false)
   const [q, setQ] = useState('')
   const [type, setType] = useState('')
   const [cat, setCat] = useState('')
@@ -66,6 +68,7 @@ export default function FinancePage() {
   const exp = s.byCategory.filter((c) => c.type === 'expense')
   const maxCat = Math.max(1, ...s.byCategory.map((c) => c.total))
   const money = (v: number | null) => fmtMoney(v, currency, { decimals: false })
+  const noCosts = s.expense === 0
 
   return (
     <div className="space-y-6">
@@ -78,16 +81,31 @@ export default function FinancePage() {
           <Menu trigger={<Button><Plus />Add</Button>}>
             <MenuItem icon={ArrowDownLeft} onClick={() => setSheet({ type: 'income' })}>Money in</MenuItem>
             <MenuItem icon={ArrowUpRight} onClick={() => setSheet({ type: 'expense' })}>Money out</MenuItem>
+            <MenuItem icon={FileUp} onClick={() => setImporting(true)}>Import bank statement…</MenuItem>
           </Menu>
         </>} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Money in" value={money(s.income)} icon={ArrowDownLeft} sub={`${inc.reduce((a, c) => a + c.count, 0)} transactions`} />
-        <StatCard label="Money out" value={money(s.expense)} icon={ArrowUpRight} tone="clay" sub={`${exp.reduce((a, c) => a + c.count, 0)} transactions`} />
-        <StatCard label="Net profit" value={money(s.net)} icon={Wallet} tone={s.net >= 0 ? 'brand' : 'clay'} sub={s.income ? `${fmtNum((s.net / s.income) * 100)}% margin` : undefined} />
-        <StatCard label="Cost per head" value={s.costPerHead != null ? money(s.costPerHead) : '—'} icon={Scale} tone="wheat"
-          sub={[s.headCount ? `${s.headCount} on farm` : null, s.avgSalePrice ? `avg sale ${money(s.avgSalePrice)}` : null, s.avgPricePerKg ? `${fmtMoney(s.avgPricePerKg, currency)}/kg` : null].filter(Boolean).join(' · ')} />
+        <StatCard label="Money out" value={money(s.expense)} icon={ArrowUpRight} tone="clay" sub={noCosts ? 'No costs recorded yet' : `${exp.reduce((a, c) => a + c.count, 0)} transactions`} />
+        <StatCard label={noCosts ? 'Net (sales only)' : 'Net profit'} value={money(s.net)} icon={Wallet} tone={s.net >= 0 ? 'brand' : 'clay'}
+          sub={noCosts ? 'Costs not recorded' : s.income ? `${fmtNum((s.net / s.income) * 100)}% margin` : undefined} />
+        <StatCard label="Cost per head" value={!noCosts && s.costPerHead != null ? money(s.costPerHead) : '—'} icon={Scale} tone="wheat"
+          sub={[noCosts ? 'Needs costs' : null, s.headCount ? `${s.headCount} on farm` : null, s.avgSalePrice ? `avg sale ${money(s.avgSalePrice)}` : null, s.avgPricePerKg ? `${fmtMoney(s.avgPricePerKg, currency)}/kg` : null].filter(Boolean).join(' · ')} />
       </div>
+
+      {noCosts && (
+        <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-stone-900">No costs recorded{period === 'ytd' ? ' this year' : ' in this period'}</p>
+            <p className="text-sm text-stone-500">Profit and cost per head need feed, vet, fuel and contractor costs. Import a bank statement to add them in one go.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setSheet({ type: 'expense' })}><Plus />Add a cost</Button>
+            <Button onClick={() => setImporting(true)}><FileUp />Import bank statement</Button>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Month by month" description={`${fmtDate(s.from)} – ${fmtDate(s.to)}`} />
@@ -176,6 +194,7 @@ export default function FinancePage() {
         )}
       </Card>
       {sheet && <TransactionSheet open onClose={() => setSheet(null)} txn={sheet.txn} defaultType={sheet.type} />}
+      {importing && <BankImportSheet open onClose={() => setImporting(false)} />}
     </div>
   )
 }

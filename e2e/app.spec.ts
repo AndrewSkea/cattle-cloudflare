@@ -174,8 +174,9 @@ test('health record with cost flows into finances; sale is blocked by withdrawal
 
 test('recording a birth registers the calf and closes the pregnancy', async () => {
   await page.goto('/breeding')
-  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: '23-7', exact: true }) })
-  await row.getByRole('button', { name: 'Born', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Past due date' })).toBeVisible()
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: '23-7', exact: true }) })
+  await row.getByRole('button', { name: 'Calved', exact: true }).click()
   const d = dialog(page, 'Record a birth')
   await d.getByRole('radio', { name: 'Female', exact: true }).click()
   await d.getByLabel(L('Tag / ID')).fill('UK999999-000002')
@@ -185,7 +186,7 @@ test('recording a birth registers the calf and closes the pregnancy', async () =
   await d.getByLabel(L('Birth weight')).fill('42')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('Birth recorded')).toBeVisible()
-  await expect(page.getByRole('row').filter({ has: page.getByRole('link', { name: '23-7', exact: true }) })).toHaveCount(0)
+  await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: '23-7', exact: true }) })).toHaveCount(0)
 
   await page.goto('/livestock')
   await page.getByRole('textbox', { name: 'Search animals' }).fill('C-1')
@@ -503,4 +504,112 @@ test('feedback: send a request from any page and see it listed', async ({ reques
   expect(list.data[0]).toMatchObject({ kind: 'idea', page: '/livestock', status: 'saved', issueNumber: null })
   expect((await page.request.post(`/api/feedback/${list.data[0].id}/reply`, { data: { message: 'more' } })).status()).toBe(409)
   expect((await request.get('/api/feedback')).status()).toBe(401)
+})
+
+test('breeding: scan results for a batch, then the cull list', async () => {
+  await page.goto('/breeding')
+  await page.getByRole('button', { name: 'Scan results', exact: true }).click()
+  const d = dialog(page, 'Scan results')
+  const rows = d.getByRole('radiogroup', { name: /^Scan result for/ })
+  const first = (await rows.nth(0).getAttribute('aria-label'))!.replace('Scan result for ', '')
+  const second = (await rows.nth(1).getAttribute('aria-label'))!.replace('Scan result for ', '')
+  await rows.nth(0).getByRole('radio', { name: 'Twins' }).click()
+  await rows.nth(1).getByRole('radio', { name: 'Empty' }).click()
+  await expect(d.getByText('1 in calf · 1 empty')).toBeVisible()
+  await page.getByRole('button', { name: 'Save 2 results' }).click()
+  await expect(page.getByText('Saved 2 scan results: 1 in calf, 1 empty')).toBeVisible()
+
+  const scans = (await (await page.request.get('/api/breeding')).json()).data.filter((b: any) => b.event === 'scan' && b.date === new Date().toISOString().slice(0, 10))
+  expect(scans.find((b: any) => b.animalTag === first)).toMatchObject({ scanResult: 'pregnant', fetusCount: 2, outcome: 'pending' })
+  expect(scans.find((b: any) => b.animalTag === second)).toMatchObject({ scanResult: 'empty', outcome: 'failed' })
+  // The in-calf cow shows as scanned on the calving list; the empty one has left it
+  await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: first, exact: true }) }).getByText(/Scanned in calf \(2\)/)).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: second, exact: true }) })).toHaveCount(0)
+
+  await page.getByRole('tab', { name: /Cull list/ }).click()
+  await expect(page.getByText('Cows to consider culling')).toBeVisible()
+  const cullRow = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: second, exact: true }) })
+  await expect(cullRow.getByText(/^Scanned empty/)).toBeVisible()
+})
+
+test('finance: import a bank statement; lines already imported are skipped', async () => {
+  const csv = 'Date,Description,Amount\n02/10/2026,"Certas Energy, Red Diesel",-412.66\n04/10/2026,Orkney Auction Mart,1840.00\n05/10/2026,Kirkwall Vets,-56.10\n06/10/2026,HARBRO FEED,-1250.00\n'
+  const upload = async () => {
+    await page.goto('/finance')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await page.getByRole('menuitem', { name: /Import bank statement/ }).click()
+    const d = dialog(page, 'Import a bank statement')
+    await d.getByLabel('Bank statement CSV').setInputFiles({ name: 'statement.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) })
+    return d
+  }
+  let d = await upload()
+  await expect(d.getByText(/3 of 4 ticked/)).toBeVisible()
+  await expect(d.getByLabel('Category for Kirkwall Vets')).toHaveValue('vet_medicine')
+  await expect(d.getByLabel('Category for Certas Energy, Red Diesel')).toHaveValue('fuel')
+  // Mart income starts unticked: sales are already recorded from the animals
+  await expect(d.getByLabel('Import Orkney Auction Mart')).not.toBeChecked()
+  await page.getByRole('button', { name: 'Import 3' }).click()
+  await expect(page.getByText('Imported 3 transactions')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'HARBRO FEED' })).toBeVisible()
+
+  d = await upload()
+  await page.getByRole('button', { name: 'Import 3' }).click()
+  await expect(page.getByText('Imported 0 transactions (3 already in Finances, skipped)')).toBeVisible()
+})
+
+test('reports: herd value, results by sire, and the dashboard calving card', async () => {
+  const insights = (await (await page.request.get('/api/mart/insights')).json()).data
+  expect(insights.valuation.total).toBeGreaterThan(0)
+  expect(insights.valuation.classes.map((c: any) => c.class)).toContain('cow')
+  await page.goto('/reports')
+  await expect(page.getByText('What the herd is worth')).toBeVisible()
+  await expect(page.getByText('Which bull pays best')).toBeVisible()
+  await page.getByRole('radio', { name: 'By breed' }).click()
+  await expect(page.getByText('Results by breed')).toBeVisible()
+  await expect(page.getByText('Born alive', { exact: true })).toBeVisible() // chart legend
+  await page.goto('/dashboard')
+  await expect(page.getByText('In calf / served')).toBeVisible()
+})
+
+test('settings: hide a section from the menu', async () => {
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /^Inventory/ }).click()
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect(page.getByText('Farm settings saved')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Inventory', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Equipment', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: /^Inventory/ }).click()
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect(page.getByRole('link', { name: 'Inventory', exact: true })).toBeVisible()
+})
+
+test('reminders: a device subscribes and unsubscribes', async ({ request }) => {
+  const info = (await (await page.request.get('/api/push')).json()).data
+  expect(info.publicKey).toMatch(/^B[\w-]{86}$/)
+  const sub = { endpoint: 'https://push.example.com/send/e2e-device', keys: { p256dh: info.publicKey, auth: 'c2VjcmV0LWF1dGgtMTIzNA' }, label: 'Test phone' }
+  expect((await page.request.post('/api/push/subscribe', { data: sub })).status()).toBe(201)
+  expect((await page.request.post('/api/push/subscribe', { data: sub })).status()).toBe(201) // same device again: one row
+  expect((await (await page.request.get('/api/push')).json()).data.devices).toEqual([expect.objectContaining({ label: 'Test phone', lastSentAt: null })])
+  expect((await page.request.post('/api/push/subscribe', { data: { ...sub, endpoint: 'http://insecure.example.com/x' } })).status()).toBe(422)
+  expect((await request.get('/api/push')).status()).toBe(401)
+  await page.goto('/profile')
+  await expect(page.getByText('Test phone')).toBeVisible()
+  await page.request.post('/api/push/unsubscribe', { data: { endpoint: sub.endpoint } })
+  expect((await (await page.request.get('/api/push')).json()).data.devices).toEqual([])
+})
+
+test('phone: bottom bar with quick add', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  const phone = await ctx.newPage()
+  await signIn(phone, OWNER)
+  await phone.goto('/dashboard')
+  const bar = phone.getByRole('navigation', { name: 'Main' })
+  await expect(bar.getByRole('link', { name: 'Breeding' })).toBeVisible()
+  // Summary cards sit two to a row on a phone
+  const [a, b] = await phone.locator('main .grid').first().locator(':scope > *').evaluateAll((els) => els.slice(0, 2).map((e) => e.getBoundingClientRect().top))
+  expect(a).toBe(b)
+  await bar.getByRole('button', { name: 'Quick add' }).click()
+  await phone.getByRole('menuitem', { name: 'Birth' }).click()
+  await expect(dialog(phone, 'Record a birth')).toBeVisible()
+  await ctx.close()
 })

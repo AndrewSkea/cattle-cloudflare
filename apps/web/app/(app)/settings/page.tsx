@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, Download, Lock, MapPin } from 'lucide-react'
+import { AlertTriangle, Check, Download, LayoutList, Lock, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, PageHeader } from '@/components/ui/display'
 import { Field, FormError, FormGrid, Input, SelectField, TextField, TextareaField, formValues } from '@/components/ui/form'
 import { Modal, useToast } from '@/components/ui/overlay'
 import { api } from '@/lib/api'
-import { SPECIES } from '@/lib/constants'
+import { HIDEABLE_SECTIONS, SPECIES } from '@/lib/constants'
 import { downloadUrl } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const toast = useToast()
   const editable = can('manager')
   const [species, setSpecies] = useState<Species[]>(farm.species)
+  const [hidden, setHidden] = useState<string[]>(farm.hiddenSections || [])
   const [loc, setLoc] = useState<LatLngZoom | null>(farm.latitude != null && farm.longitude != null ? { latitude: farm.latitude, longitude: farm.longitude, zoom: farm.zoom ?? 15 } : null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +36,7 @@ export default function SettingsPage() {
     setBusy(true); setError(null)
     try {
       const v = formValues(e.currentTarget)
-      await api.put('/api/farm', { ...v, species, latitude: loc?.latitude ?? null, longitude: loc?.longitude ?? null, zoom: loc?.zoom ?? null })
+      await api.put('/api/farm', { ...v, species, hiddenSections: hidden, latitude: loc?.latitude ?? null, longitude: loc?.longitude ?? null, zoom: loc?.zoom ?? null })
       await qc.invalidateQueries({ queryKey: ['me'] })
       toast('Farm settings saved')
     } catch (err: any) { setError(err.message) } finally { setBusy(false) }
@@ -78,6 +79,20 @@ export default function SettingsPage() {
                   })}
                 </div>
               </Field>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Sections in the menu" description="Hide the parts of the app this farm doesn’t use. Nothing is deleted; turn a section back on at any time." icon={LayoutList} />
+            <div className="flex flex-wrap gap-2 p-5">
+              {HIDEABLE_SECTIONS.map((sec) => {
+                const on = !hidden.includes(sec.value)
+                return (
+                  <button type="button" key={sec.value} aria-pressed={on} onClick={() => setHidden((x) => on ? [...x, sec.value] : x.filter((y) => y !== sec.value))}
+                    className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ring-1 transition', on ? 'bg-brand-50 text-brand-900 ring-brand-400' : 'bg-white text-stone-400 line-through ring-stone-200')}>
+                    {sec.label}{on && <Check className="size-3.5" />}
+                  </button>
+                )
+              })}
             </div>
           </Card>
           <Card>

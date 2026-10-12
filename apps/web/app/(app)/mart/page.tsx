@@ -51,7 +51,7 @@ export default function MartPage() {
 
       {!configured ? <SetupCard canEdit={can('manager')} onDone={() => setTab('new')} /> : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <StatCard label="To review" value={fmtNum(o.counts.new)} icon={Gavel} tone="wheat" sub="Lots that look like yours" />
             <StatCard label="Imported" value={fmtNum(o.counts.imported)} icon={Check} tone="brand" sub="Linked to your animals" />
             <StatCard label="Reports read" value={fmtNum(o.reports)} icon={Search} tone="stone" sub={o.latestReport ? `Latest sale ${fmtDate(o.latestReport)}` : undefined} />

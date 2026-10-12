@@ -14,6 +14,8 @@ export interface Farm {
   currency: string
   areaUnit: 'ha' | 'ac'
   species: Species[]
+  /** Menu sections this farm has hidden (see HIDEABLE_SECTIONS) */
+  hiddenSections: string[]
 }
 
 export interface Me {

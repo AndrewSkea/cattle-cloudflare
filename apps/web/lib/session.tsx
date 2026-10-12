@@ -34,6 +34,8 @@ export function useSession() {
     role,
     currency: me?.farm?.currency || 'GBP',
     can: (min: Role) => ROLES.indexOf(role) >= ROLES.indexOf(min),
+    /** False when the farm has hidden this section of the app in settings */
+    shows: (section: string) => !me?.farm?.hiddenSections?.includes(section),
   }
 }
 

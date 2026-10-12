@@ -1,6 +1,6 @@
-// HoovesWho service worker: makes the app installable and lets its pages open without signal.
+// HoovesWho service worker: makes the app installable, lets its pages open without signal, and shows reminders.
 // API calls (/api/*) always go to the network; farm data is never cached here.
-const VERSION = 'v1'; // bump to drop old caches
+const VERSION = 'v2'; // bump to drop old caches
 const STATIC = `static-${VERSION}`;
 const PAGES = `pages-${VERSION}`;
 const OFFLINE = '/offline'; // served from offline.html (the Worker drops .html)
@@ -47,4 +47,31 @@ self.addEventListener('fetch', (event) => {
       }
     })());
   }
+});
+
+// Reminder notifications (Web Push). The payload is encrypted by the server and carries everything to show,
+// so nothing is fetched here (the Cloudflare Access cookie may have expired overnight).
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'HoovesWho', {
+    body: data.body || 'You have farm reminders today.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: data.tag || 'hooveswho',
+    renotify: true,
+    data: { url: data.url || '/dashboard' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || '/dashboard', self.location.origin).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin === self.location.origin && 'focus' in w) { await w.focus(); return w.navigate(url); }
+    }
+    return self.clients.openWindow(url);
+  })());
 });

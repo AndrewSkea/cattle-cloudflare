@@ -144,6 +144,21 @@ export const INVENTORY_CATEGORIES = [
   { value: 'other', label: 'Other' },
 ]
 
+/** Parts of the app a farm can hide from the menu (Farm settings). Dashboard, Animals, Breeding and Team always show. */
+export const HIDEABLE_SECTIONS = [
+  { value: 'calendar', label: 'Calendar' },
+  { value: 'tasks', label: 'Tasks' },
+  { value: 'health', label: 'Health' },
+  { value: 'families', label: 'Families' },
+  { value: 'traceability', label: 'Traceability' },
+  { value: 'land', label: 'Land & map' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'mart', label: 'Mart sales' },
+  { value: 'finance', label: 'Finances' },
+  { value: 'reports', label: 'Reports' },
+]
+
 export const INCOME_CATEGORIES = [
   { value: 'livestock_sales', label: 'Livestock sales' },
   { value: 'subsidies', label: 'Subsidies & grants' },

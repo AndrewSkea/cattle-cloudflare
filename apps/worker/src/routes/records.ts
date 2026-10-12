@@ -3,7 +3,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../db/schema';
 import {
@@ -240,6 +240,62 @@ breeding.post('/', async (c) => {
   const [r] = await c.get('db').insert(schema.breedingRecords).values({ ...values, farmId: s.farmId, createdBy: s.userId }).returning();
   await logActivity(c, 'created', 'breeding', r.id, `${values.event[0].toUpperCase() + values.event.slice(1)} recorded for ${a.tagNo}`);
   return c.json({ data: r }, 201);
+});
+
+/**
+ * Scan results for a batch of females on one day (the scanner's visit). Each result is stored as a scan that keeps
+ * the sire and due date of her latest pending service unless a due date is given; "empty" closes that service.
+ */
+breeding.post('/scans', async (c) => {
+  const s = farmSession(c);
+  const db = c.get('db');
+  const { date, results } = await body(c, z.object({
+    date: isoDate,
+    results: z.array(z.object({
+      animalId: z.number().int().positive(),
+      result: z.enum(['pregnant', 'empty', 'unknown']),
+      fetusCount: z.coerce.number().int().min(0).max(20).nullish(),
+      expectedDueDate: optDate,
+    })).min(1).max(500),
+  }));
+  // Whole-farm reads: D1 allows 100 bound parameters, which a large batch in an IN (...) list would exceed.
+  const [females, pending] = await Promise.all([
+    db.select({ id: schema.animals.id, sex: schema.animals.sex, tagNo: schema.animals.tagNo }).from(schema.animals)
+      .where(eq(schema.animals.farmId, s.farmId)).all(),
+    db.select().from(schema.breedingRecords)
+      .where(and(eq(schema.breedingRecords.farmId, s.farmId), eq(schema.breedingRecords.outcome, 'pending'),
+        eq(schema.breedingRecords.event, 'service'), lte(schema.breedingRecords.date, date)))
+      .orderBy(desc(schema.breedingRecords.date)).all(),
+  ]);
+  const byId = new Map(females.map((a) => [a.id, a]));
+  for (const r of results) {
+    const a = byId.get(r.animalId);
+    if (!a) throw new HttpError(422, 'Animal not found on this farm');
+    if (a.sex !== 'female') throw new HttpError(422, `${a.tagNo} is not female`);
+  }
+  const lastService = new Map<number, typeof pending[number]>();
+  for (const p of pending) if (!lastService.has(p.animalId)) lastService.set(p.animalId, p);
+
+  const rows = results.map((r) => {
+    const svc = lastService.get(r.animalId);
+    return {
+      farmId: s.farmId, animalId: r.animalId, event: 'scan', date, scanResult: r.result, fetusCount: r.fetusCount ?? null,
+      sireId: svc?.sireId ?? null, sireName: svc?.sireName ?? null, method: svc?.method ?? null,
+      expectedDueDate: r.result === 'empty' ? null : r.expectedDueDate ?? svc?.expectedDueDate ?? null,
+      outcome: r.result === 'empty' ? 'failed' : 'pending', createdBy: s.userId,
+    };
+  });
+  // D1 caps bound parameters per statement, so insert in chunks.
+  for (let i = 0; i < rows.length; i += 6) await db.insert(schema.breedingRecords).values(rows.slice(i, i + 6));
+  const empty = results.filter((r) => r.result === 'empty').map((r) => r.animalId);
+  for (let i = 0; i < empty.length; i += 80) {
+    await db.update(schema.breedingRecords).set({ outcome: 'failed', updatedAt: now() })
+      .where(and(eq(schema.breedingRecords.farmId, s.farmId), inArray(schema.breedingRecords.animalId, empty.slice(i, i + 80)),
+        eq(schema.breedingRecords.outcome, 'pending'), lte(schema.breedingRecords.date, date)));
+  }
+  const inCalf = results.filter((r) => r.result === 'pregnant').length;
+  await logActivity(c, 'created', 'breeding', null, `Scan results: ${inCalf} in calf, ${empty.length} empty${results.length - inCalf - empty.length ? `, ${results.length - inCalf - empty.length} unsure` : ''}`);
+  return c.json({ data: { saved: results.length, pregnant: inCalf, empty: empty.length } }, 201);
 });
 
 breeding.put('/:id', async (c) => {

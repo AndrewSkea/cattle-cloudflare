@@ -115,11 +115,18 @@ export function FamilyTreeDiagram({ tree, maxUp = 3, emptyHint }: { tree: Family
   const fitScale = () => Math.min(1, ((scroller.current?.clientWidth || width) - 8) / width)
   const fit = () => setScale(Math.max(0.3, fitScale()))
   // Wide trees (a bull's calves) stay readable and scroll sideways; the fit button shows the whole tree.
-  useLayoutEffect(() => setScale(Math.max(0.75, fitScale())), [width]) // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => setScale(Math.max(0.6, fitScale())), [width]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Fades on the sides show there is more of the tree to scroll to.
+  const [more, setMore] = useState({ left: false, right: false })
+  const checkEdges = () => {
+    const el = scroller.current
+    if (el) setMore({ left: el.scrollLeft > 4, right: el.scrollWidth - el.scrollLeft - el.clientWidth > 4 })
+  }
   useEffect(() => {
     const el = scroller.current
     if (el) el.scrollLeft = Math.max(0, rootX * scale - el.clientWidth / 2)
-  }, [rootX, scale])
+    checkEdges()
+  }, [rootX, scale]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const open = (p: Placed) => { if (p.node) router.push(`/livestock/view?id=${p.node.id}&tab=family`) }
   const show = (p: Placed, el: Element) => { if (p.node) setHover({ p, rect: el.getBoundingClientRect() }) }
@@ -127,7 +134,8 @@ export function FamilyTreeDiagram({ tree, maxUp = 3, emptyHint }: { tree: Family
   const onlyRoot = placed.length === 1
   return (
     <div className="relative">
-      <div ref={scroller} className="max-h-[70vh] overflow-auto rounded-xl bg-stone-50/60 ring-1 ring-stone-100 scrollbar-thin" onScroll={() => setHover(null)}>
+      <div className="relative">
+      <div ref={scroller} className="max-h-[70vh] overflow-auto rounded-xl bg-stone-50/60 ring-1 ring-stone-100 scrollbar-thin" onScroll={() => { setHover(null); checkEdges() }}>
         <svg width={width * scale} height={height * scale} viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Family tree" className="block select-none">
           <g fill="none" stroke="#d6d3d1" strokeWidth={1.5}>
             {edges.map((e, i) => {
@@ -177,11 +185,14 @@ export function FamilyTreeDiagram({ tree, maxUp = 3, emptyHint }: { tree: Family
           })}
         </svg>
       </div>
+      <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 left-0 w-10 rounded-l-xl bg-gradient-to-r from-stone-200/80 to-transparent transition-opacity', more.left ? 'opacity-100' : 'opacity-0')} />
+      <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-stone-200/80 to-transparent transition-opacity', more.right ? 'opacity-100' : 'opacity-0')} />
+      </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-stone-500">
         <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-violet-400" />Female</span>
         <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-sky-400" />Male</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-sm border border-dashed border-stone-400" />No longer on farm</span>
-        <span className="ml-auto hidden md:inline">Hover for details · click to open</span>
+        <span className="ml-auto hidden md:inline">{more.left || more.right ? 'Scroll sideways for more · ' : ''}Hover for details · click to open</span>
         <div className="ml-auto flex gap-1 rounded-lg bg-white p-0.5 shadow-sm ring-1 ring-stone-200 md:ml-2">
           <button type="button" aria-label="Zoom out" onClick={() => setScale((s) => Math.max(0.3, s / 1.25))} className="grid size-7 place-items-center rounded-md text-stone-600 hover:bg-stone-100"><Minus className="size-4" /></button>
           <button type="button" aria-label="Fit whole tree" onClick={fit} className="grid size-7 place-items-center rounded-md text-stone-600 hover:bg-stone-100"><Maximize2 className="size-3.5" /></button>
