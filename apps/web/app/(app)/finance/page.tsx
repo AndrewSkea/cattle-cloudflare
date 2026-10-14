@@ -38,7 +38,7 @@ function periods() {
   }
 }
 
-const SOURCE_LABEL: Record<string, string> = { animal_sale: 'Animal sale', animal_purchase: 'Animal purchase', health: 'Health record', equipment_log: 'Equipment log' }
+const SOURCE_LABEL: Record<string, string> = { animal_sale: 'Animal sale', animal_purchase: 'Animal purchase', health: 'Health record', equipment_log: 'Equipment log', field_event: 'Field record' }
 
 export default function FinancePage() {
   const { currency, can } = useSession()

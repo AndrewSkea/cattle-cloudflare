@@ -5,7 +5,7 @@ import { api, ApiError, getData } from './api'
 import { useToast } from '@/components/ui/overlay'
 import type {
   AnimalListItem, AnimalOption, BirthRecord, BreedingRecord, Equipment, HealthRecord, InventoryItem, Member,
-  FeedbackItem, Parcel, StaffMember, Structure, Task, Transaction,
+  FeedbackItem, FieldsOverview, Parcel, StaffMember, Structure, Task, Transaction,
 } from './types'
 
 export const useList = <T,>(key: string, path: string, enabled = true) =>
@@ -14,6 +14,8 @@ export const useList = <T,>(key: string, path: string, enabled = true) =>
 export const useAnimals = (status: 'active' | 'all' | 'exited' = 'active') => useList<AnimalListItem>('animals', `/api/animals?status=${status}`)
 export const useAnimalOptions = () => useList<AnimalOption>('animals', '/api/animals/options')
 export const useParcels = () => useList<Parcel>('land', '/api/land')
+export const useFieldsOverview = (year?: number) =>
+  useQuery({ queryKey: ['land', 'fields', year ?? 'now'], queryFn: () => getData<FieldsOverview>(`/api/fields${year ? `?year=${year}` : ''}`) })
 export const useStructures = () => useList<Structure>('structures', '/api/structures')
 export const useEquipment = () => useList<Equipment>('equipment', '/api/equipment')
 export const useTasks = () => useList<Task>('tasks', '/api/tasks')

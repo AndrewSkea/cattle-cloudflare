@@ -8,6 +8,7 @@ import type { DrizzleD1Database } from '../db/client';
 import { addDays, type Env, today } from '../lib/context';
 import { complianceSummary } from './compliance';
 import { type PushKeys, sendPush } from './push';
+import { plannedFieldWork } from '../routes/fields';
 
 export function pushKeys(env: Env): PushKeys | null {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return null;
@@ -20,7 +21,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export async function farmReminders(db: DrizzleD1Database, farmId: number, userId: number): Promise<{ title: string; lines: string[]; url: string }> {
   const t = today();
   const week = addDays(t, 7);
-  const [breeding, animals, health, tasks, compliance] = await Promise.all([
+  const [breeding, animals, health, tasks, compliance, fieldWork] = await Promise.all([
     db.select({ animalId: schema.breedingRecords.animalId, event: schema.breedingRecords.event, scanResult: schema.breedingRecords.scanResult, due: schema.breedingRecords.expectedDueDate })
       .from(schema.breedingRecords)
       .where(and(eq(schema.breedingRecords.farmId, farmId), eq(schema.breedingRecords.outcome, 'pending'), isNotNull(schema.breedingRecords.expectedDueDate), lte(schema.breedingRecords.expectedDueDate, week))).all(),
@@ -30,6 +31,7 @@ export async function farmReminders(db: DrizzleD1Database, farmId: number, userI
     db.select({ title: schema.tasks.title, due: schema.tasks.dueDate, assignee: schema.tasks.assigneeUserId })
       .from(schema.tasks).where(and(eq(schema.tasks.farmId, farmId), ne(schema.tasks.status, 'done'), isNotNull(schema.tasks.dueDate), lte(schema.tasks.dueDate, t))).all(),
     complianceSummary(db, farmId),
+    plannedFieldWork(db, farmId, null, t, true),
   ]);
   const active = new Set(animals.filter((a) => a.status === 'active').map((a) => a.id));
 
@@ -61,7 +63,10 @@ export async function farmReminders(db: DrizzleD1Database, farmId: number, userI
   const mine = tasks.filter((x) => !x.assignee || x.assignee === userId);
   if (mine.length) lines.push(mine.length === 1 ? `Task: ${mine[0].title}` : `${mine.length} tasks due`);
 
-  const url = compliance.overdue || compliance.dueSoon ? '/traceability' : dues.length ? '/breeding' : mine.length ? '/tasks' : '/dashboard';
+  const work = fieldWork.filter((f) => f.status === 'planned');
+  if (work.length) lines.push(work.length === 1 ? `Field work: ${work[0].label} (${work[0].field})` : `${work.length} field jobs due`);
+
+  const url = compliance.overdue || compliance.dueSoon ? '/traceability' : dues.length ? '/breeding' : mine.length ? '/tasks' : work.length ? '/land' : '/dashboard';
   return { title: lines.length === 1 ? 'HoovesWho: 1 thing today' : `HoovesWho: ${lines.length} things today`, lines, url };
 }
 

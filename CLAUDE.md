@@ -25,7 +25,8 @@ apps/
     src/lib/                context (roles, HttpError, validation), auth (JWT cookie), crud helper, invites, validators
     src/routes/             auth, farm, animals, records (health/weights/breeding/births/movements),
                             resources (land/structures/equipment/staff/tasks/inventory), finance, dashboard,
-                            mart (Orkney Mart matches/import/prices), compliance (+ scoteid, + dev ScotEID mock)
+                            mart (Orkney Mart matches/import/prices), compliance (+ scoteid, + dev ScotEID mock),
+                            fields (crops, field timeline, readings, season overview)
     src/services/           livestock (classes, family graph & stats), finance (auto transactions), exit (sale/death),
                             mart/parse (report parser, pure), mart/orkney (fetch, store, match, candidates),
                             mart/insights (herd value at mart prices, best months to sell), push (Web Push, VAPID,
@@ -72,6 +73,14 @@ Key decisions:
   per device when something is due (`services/reminders.ts`). Payloads are encrypted so the service worker doesn't
   fetch (Access cookies expire). Keys: `VAPID_PUBLIC_KEY` var in wrangler.toml, `VAPID_PRIVATE_KEY` secret; local
   dev keys are in `.dev.vars.example`. iPhones need the app on the Home Screen first.
+- **Fields (crops & records):** `/land/field?id=` per field; `routes/fields.ts`. `field_crops` (what's growing, incl.
+  permanent grass; planned → growing → finished), `field_events` (sowing, fertiliser, lime, slurry, minerals, spray,
+  field work, harvest, grazing, soil test, readings, note; `done` or `planned`), `field_readings` (value per kind,
+  optionally at a lat/lng — tap the map or use GPS). Forms work out N/P₂O₅/K₂O/SO₃ kg/ha from a fertiliser analysis or
+  typical RB209 manure values. Sprays set `no_graze_until` (warned on the field, Land list and Move sheet). Costs of done
+  records become `field_event` transactions. Rest days come from animal moves (`movements`) plus manual grazing records.
+  Planned work shows in the Calendar and the 8am reminder; Land shows a season chart (`components/season-chart.tsx`).
+  Leaflet: `leaflet-base.ts` patches zoom-end after a map is removed (closing a sheet mid-zoom threw `_leaflet_pos`).
 - **Bank import:** Finances → Add → Import bank statement parses a CSV in the browser (`lib/bank-csv.ts`, guesses
   categories); `POST /api/finance/import` skips lines matching an existing date + amount + description.
 - **Orkney Mart:** reports come from the mart's WordPress events API (`/wp-json/tribe/events/v1/events?categories=sales-report`).

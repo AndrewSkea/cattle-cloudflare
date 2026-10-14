@@ -207,3 +207,107 @@ export const EMPLOYMENT_TYPES = [
   { value: 'seasonal', label: 'Seasonal' },
   { value: 'contractor', label: 'Contractor' },
 ]
+
+// ---------------- Fields: crops, records, readings ----------------
+
+export const CROPS = [
+  { value: 'grass', label: 'Grass', color: '#4d9a63' },
+  { value: 'grass_clover', label: 'Grass & clover', color: '#62b175' },
+  { value: 'spring_barley', label: 'Spring barley', color: '#d4a049' },
+  { value: 'winter_barley', label: 'Winter barley', color: '#c08a35' },
+  { value: 'oats', label: 'Oats', color: '#dcc06a' },
+  { value: 'wheat', label: 'Wheat', color: '#c99b45' },
+  { value: 'whole_crop', label: 'Whole crop', color: '#b6a33a' },
+  { value: 'turnips', label: 'Turnips', color: '#9b6bb0' },
+  { value: 'swedes', label: 'Swedes', color: '#8a62a8' },
+  { value: 'kale', label: 'Kale', color: '#3f7f5a' },
+  { value: 'fodder_beet', label: 'Fodder beet', color: '#c0605a' },
+  { value: 'rape', label: 'Forage rape', color: '#d9c23a' },
+  { value: 'maize', label: 'Maize', color: '#e0b030' },
+  { value: 'potatoes', label: 'Potatoes', color: '#a9722d' },
+  { value: 'other', label: 'Other', color: '#78716c' },
+]
+export const cropInfo = (v: string) => CROPS.find((x) => x.value === v) || CROPS[CROPS.length - 1]
+export const cropLabel = (c: { crop: string; variety?: string | null }) => `${cropInfo(c.crop).label}${c.variety ? ` (${c.variety})` : ''}`
+
+export const CROP_PURPOSES = [
+  { value: 'grazing', label: 'Grazing' }, { value: 'silage', label: 'Silage' }, { value: 'hay', label: 'Hay' },
+  { value: 'grain', label: 'Grain' }, { value: 'wholecrop', label: 'Whole crop' }, { value: 'forage', label: 'Forage / winter feed' }, { value: 'other', label: 'Other' },
+]
+
+export const FIELD_EVENT_TYPES = [
+  { value: 'sowing', label: 'Sowing / reseed', short: 'Sowing', color: '#4d9a63' },
+  { value: 'fertiliser', label: 'Fertiliser', short: 'Fertiliser', color: '#2f7fb8' },
+  { value: 'lime', label: 'Lime', short: 'Lime', color: '#a8a29e' },
+  { value: 'slurry', label: 'Slurry / muck', short: 'Slurry', color: '#8a6a3b' },
+  { value: 'minerals', label: 'Minerals & trace elements', short: 'Minerals', color: '#7c5cc4' },
+  { value: 'spray', label: 'Spray', short: 'Spray', color: '#d9483b' },
+  { value: 'cultivation', label: 'Field work', short: 'Field work', color: '#57534e' },
+  { value: 'harvest', label: 'Harvest / cut', short: 'Harvest', color: '#d4a049' },
+  { value: 'grazing', label: 'Grazing', short: 'Grazing', color: '#2e7d4f' },
+  { value: 'soil_test', label: 'Soil test', short: 'Soil test', color: '#b45309' },
+  { value: 'reading', label: 'Readings', short: 'Readings', color: '#0e7490' },
+  { value: 'note', label: 'Note', short: 'Note', color: '#a8a29e' },
+] as const
+export type FieldEventType = (typeof FIELD_EVENT_TYPES)[number]['value']
+export const fieldEventType = (v: string) => FIELD_EVENT_TYPES.find((x) => x.value === v) || FIELD_EVENT_TYPES[FIELD_EVENT_TYPES.length - 1]
+
+/** Field work suggestions (free text is fine too). */
+export const FIELD_OPERATIONS = ['Ploughing', 'Power harrowing', 'Discing', 'Rolling', 'Harrowing (chain)', 'Topping', 'Direct drilling', 'Stone picking', 'Subsoiling', 'Hedge cutting', 'Fencing', 'Drainage', 'Ditching']
+export const SPRAY_SUGGESTIONS = ['Thistles / docks (herbicide)', 'Rushes (herbicide)', 'Weed control (cereal)', 'Fungicide', 'Insecticide', 'Glyphosate (burn-off)']
+
+export const RATE_UNITS = [
+  { value: 'kg/ha', label: 'kg/ha' }, { value: 'kg/ac', label: 'kg/acre' }, { value: 'bags/ac', label: 'bags (50 kg)/acre' },
+  { value: 't/ha', label: 't/ha' }, { value: 't/ac', label: 't/acre' }, { value: 'm3/ha', label: 'm³/ha' },
+  { value: 'gal/ac', label: 'gallons/acre' }, { value: 'L/ha', label: 'L/ha' }, { value: 'L/ac', label: 'L/acre' },
+]
+export const YIELD_UNITS = [
+  { value: 'bales', label: 'bales' }, { value: 'round_bales', label: 'round bales' }, { value: 'square_bales', label: 'small bales' },
+  { value: 't', label: 'tonnes' }, { value: 't/ha', label: 't/ha' }, { value: 'pits', label: 'pit loads' }, { value: 'trailers', label: 'trailer loads' },
+]
+
+/** Typical nutrients per unit of organic manure (RB209, 2017): kg per m³ (slurry) or per tonne (FYM). */
+export const MANURE_PRESETS = [
+  { value: 'cattle_slurry_6', label: 'Cattle slurry (6% DM)', unit: 'm3', n: 2.6, p: 1.2, k: 2.5, s: 0.7 },
+  { value: 'cattle_slurry_2', label: 'Cattle slurry, thin (2% DM)', unit: 'm3', n: 1.6, p: 0.6, k: 1.6, s: 0.3 },
+  { value: 'cattle_fym', label: 'Cattle FYM (muck)', unit: 't', n: 6.0, p: 3.2, k: 8.0, s: 2.4 },
+  { value: 'sheep_fym', label: 'Sheep FYM', unit: 't', n: 7.0, p: 3.2, k: 8.0, s: 4.0 },
+  { value: 'poultry', label: 'Poultry litter', unit: 't', n: 19, p: 8.0, k: 9.9, s: 5.6 },
+]
+
+export const READING_KINDS = [
+  { value: 'soil_moisture', label: 'Soil moisture', unit: '%', min: 10, max: 50, low: 'Dry', high: 'Wet', palette: 'wet' },
+  { value: 'grass_height', label: 'Grass height', unit: 'cm', min: 2, max: 15, low: 'Short', high: 'Long', palette: 'grow' },
+  { value: 'grass_cover', label: 'Grass cover', unit: 'kg DM/ha', min: 1200, max: 3500, low: 'Low', high: 'High', palette: 'grow' },
+  { value: 'crop_moisture', label: 'Crop moisture', unit: '%', min: 12, max: 30, low: 'Dry', high: 'Wet', palette: 'wet' },
+  { value: 'dry_matter', label: 'Dry matter', unit: '%', min: 15, max: 45, low: 'Wet', high: 'Dry', palette: 'grow' },
+  { value: 'ph', label: 'Soil pH', unit: 'pH', min: 5, max: 7, low: 'Acid', high: 'Neutral', palette: 'grow' },
+  { value: 'p_index', label: 'P index', unit: 'index', min: 0, max: 4, low: '0', high: '4', palette: 'grow' },
+  { value: 'k_index', label: 'K index', unit: 'index', min: 0, max: 4, low: '0', high: '4', palette: 'grow' },
+  { value: 'mg_index', label: 'Mg index', unit: 'index', min: 0, max: 4, low: '0', high: '4', palette: 'grow' },
+  { value: 'organic_matter', label: 'Organic matter', unit: '%', min: 2, max: 12, low: 'Low', high: 'High', palette: 'grow' },
+  { value: 'soil_temp', label: 'Soil temperature', unit: '°C', min: 0, max: 15, low: 'Cold', high: 'Warm', palette: 'warm' },
+  { value: 'other', label: 'Other', unit: '', min: 0, max: 100, low: 'Low', high: 'High', palette: 'grow' },
+] as const
+export type ReadingKind = (typeof READING_KINDS)[number]['value']
+export const readingKind = (v: string) => READING_KINDS.find((x) => x.value === v) || READING_KINDS[READING_KINDS.length - 1]
+export const SOIL_TEST_KINDS: ReadingKind[] = ['ph', 'p_index', 'k_index', 'mg_index', 'organic_matter']
+
+const PALETTES: Record<string, [number, number, number][]> = {
+  wet: [[214, 160, 73], [237, 226, 160], [120, 190, 210], [37, 99, 175]],
+  grow: [[201, 74, 59], [230, 190, 80], [140, 190, 90], [46, 125, 79]],
+  warm: [[59, 110, 190], [140, 190, 220], [240, 200, 90], [214, 96, 50]],
+}
+/** Colour for a reading on its kind's scale (min → max). */
+export function readingColor(kind: string, value: number): string {
+  const k = readingKind(kind)
+  const pal = PALETTES[k.palette]
+  const t = Math.max(0, Math.min(1, (value - k.min) / (k.max - k.min || 1))) * (pal.length - 1)
+  const i = Math.min(pal.length - 2, Math.floor(t)), f = t - i
+  const c = pal[i].map((v, j) => Math.round(v + (pal[i + 1][j] - v) * f))
+  return `rgb(${c[0]},${c[1]},${c[2]})`
+}
+export const readingGradient = (kind: string) => {
+  const k = readingKind(kind)
+  return `linear-gradient(to right, ${[0, 0.33, 0.66, 1].map((t) => readingColor(kind, k.min + t * (k.max - k.min))).join(', ')})`
+}

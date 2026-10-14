@@ -19,6 +19,19 @@ export const HIDEABLE_SECTIONS = ['calendar', 'tasks', 'health', 'families', 'tr
 export const ANIMAL_STATUS = ['active', 'sold', 'died', 'culled', 'missing'] as const;
 export const HEALTH_TYPES = ['vaccination', 'treatment', 'test', 'procedure', 'vet_visit', 'observation', 'injury'] as const;
 export const LAND_USES = ['pasture', 'silage', 'hay', 'arable', 'woodland', 'yard', 'other'] as const;
+export const CROPS = [
+  'grass', 'grass_clover', 'spring_barley', 'winter_barley', 'oats', 'wheat', 'whole_crop', 'turnips', 'swedes', 'kale',
+  'fodder_beet', 'rape', 'maize', 'potatoes', 'other',
+] as const;
+export const CROP_PURPOSES = ['grazing', 'silage', 'hay', 'grain', 'wholecrop', 'forage', 'other'] as const;
+export const CROP_STATUS = ['planned', 'growing', 'finished'] as const;
+export const FIELD_EVENT_TYPES = [
+  'sowing', 'fertiliser', 'lime', 'slurry', 'minerals', 'spray', 'cultivation', 'harvest', 'grazing', 'soil_test', 'reading', 'note',
+] as const;
+export const READING_KINDS = [
+  'soil_moisture', 'grass_height', 'grass_cover', 'crop_moisture', 'dry_matter', 'ph', 'p_index', 'k_index', 'mg_index',
+  'organic_matter', 'soil_temp', 'other',
+] as const;
 export const TENURES = ['owned', 'rented', 'licensed', 'other'] as const;
 export const STRUCTURE_KINDS = ['barn', 'shed', 'yard', 'pen', 'silo', 'water', 'gate', 'handling', 'house', 'store', 'other'] as const;
 export const EQUIPMENT_CATEGORIES = ['tractor', 'vehicle', 'trailer', 'implement', 'atv', 'handling', 'tool', 'other'] as const;

@@ -16,6 +16,7 @@ import {
   isoDate, optDate, optId, optPosNum, optText, reqText,
 } from '../lib/validators';
 import { deleteSourceTxn, syncSourceTxn } from '../services/finance';
+import { cleanFieldTxns } from './fields';
 
 async function assertOwned(c: Ctx, table: any, id: number | null | undefined, what: string) {
   if (!id) return;
@@ -41,6 +42,7 @@ const parcelInput = z.object({
 export const parcels = crud({
   table: schema.landParcels, input: parcelInput, entity: 'land', label: (r) => `field ${r.name}`,
   read: 'viewer', write: 'worker', remove: 'manager', orderBy: asc(schema.landParcels.name),
+  afterDelete: (c) => cleanFieldTxns(c),
   prepare: (_c, d) => {
     if (d.polygon) {
       try {

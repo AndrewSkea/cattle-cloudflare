@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DrizzleD1Database } from '../db/client';
 
-type Source = 'animal_sale' | 'animal_purchase' | 'health' | 'equipment_log';
+type Source = 'animal_sale' | 'animal_purchase' | 'health' | 'equipment_log' | 'field_event';
 
 export interface SourceTxn {
   type: 'income' | 'expense';
@@ -18,6 +18,7 @@ export interface SourceTxn {
   counterparty?: string | null;
   animalId?: number | null;
   equipmentId?: number | null;
+  parcelId?: number | null;
 }
 
 /** Creates, updates or (when `txn` is null / amount ≤ 0) deletes the transaction for a source record. */
@@ -33,6 +34,7 @@ export async function syncSourceTxn(
   const values = {
     type: txn.type, category: txn.category, amount: txn.amount, date: txn.date, description: txn.description,
     counterparty: txn.counterparty ?? null, animalId: txn.animalId ?? null, equipmentId: txn.equipmentId ?? null,
+    parcelId: txn.parcelId ?? null,
   };
   if (existing) {
     await db.update(schema.transactions).set({ ...values, updatedAt: new Date().toISOString() }).where(eq(schema.transactions.id, existing.id));

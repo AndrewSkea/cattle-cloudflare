@@ -97,6 +97,79 @@ export const landParcels = sqliteTable('land_parcels', {
   farm: index('idx_parcel_farm').on(t.farmId),
 }));
 
+/** What is growing in a field over a period: a sown crop, a reseed or permanent grass. */
+export const fieldCrops = sqliteTable('field_crops', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  parcelId: integer('parcel_id').notNull().references(() => landParcels.id, { onDelete: 'cascade' }),
+  crop: text('crop').notNull(), // grass|grass_clover|spring_barley|winter_barley|oats|wheat|whole_crop|turnips|kale|swedes|fodder_beet|rape|maize|potatoes|other
+  variety: text('variety'),
+  purpose: text('purpose').notNull().default('grazing'), // grazing|silage|hay|grain|wholecrop|forage|other
+  status: text('status').notNull().default('growing'), // planned|growing|finished
+  startDate: text('start_date'), // sown / established; null for long-standing grass
+  expectedHarvest: text('expected_harvest'),
+  endDate: text('end_date'),
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  parcel: index('idx_crop_parcel').on(t.parcelId, t.startDate),
+  farm: index('idx_crop_farm').on(t.farmId),
+}));
+
+/** Field timeline: sowing, fertiliser/lime/slurry/minerals, sprays, field work, harvests, grazing, soil tests, readings, notes. */
+export const fieldEvents = sqliteTable('field_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  parcelId: integer('parcel_id').notNull().references(() => landParcels.id, { onDelete: 'cascade' }),
+  cropId: integer('crop_id').references(() => fieldCrops.id, { onDelete: 'set null' }),
+  type: text('type').notNull(),
+  status: text('status').notNull().default('done'), // done|planned
+  date: text('date').notNull(),
+  endDate: text('end_date'),
+  product: text('product'),
+  rate: real('rate'),
+  rateUnit: text('rate_unit'),
+  areaHa: real('area_ha'), // area treated, when not the whole field
+  nKgHa: real('n_kg_ha'),
+  pKgHa: real('p_kg_ha'), // P2O5
+  kKgHa: real('k_kg_ha'), // K2O
+  sKgHa: real('s_kg_ha'), // SO3
+  yieldAmount: real('yield_amount'),
+  yieldUnit: text('yield_unit'),
+  moisturePct: real('moisture_pct'),
+  dryMatterPct: real('dry_matter_pct'),
+  noGrazeUntil: text('no_graze_until'),
+  cost: real('cost'),
+  contractor: text('contractor'),
+  equipmentId: integer('equipment_id').references(() => equipment.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  parcel: index('idx_fevent_parcel').on(t.parcelId, t.date),
+  farm: index('idx_fevent_farm').on(t.farmId, t.date),
+}));
+
+/** Measurements attached to a field event, optionally at a point in the field (soil moisture, grass height, pH…). */
+export const fieldReadings = sqliteTable('field_readings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  parcelId: integer('parcel_id').notNull().references(() => landParcels.id, { onDelete: 'cascade' }),
+  eventId: integer('event_id').notNull().references(() => fieldEvents.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  kind: text('kind').notNull(), // soil_moisture|grass_height|grass_cover|crop_moisture|dry_matter|ph|p_index|k_index|mg_index|organic_matter|soil_temp|other
+  label: text('label'),
+  value: real('value').notNull(),
+  unit: text('unit'),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+}, (t) => ({
+  parcel: index('idx_freading_parcel').on(t.parcelId, t.kind, t.date),
+  event: index('idx_freading_event').on(t.eventId),
+}));
+
 export const structures = sqliteTable('structures', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
@@ -404,7 +477,7 @@ export const transactions = sqliteTable('transactions', {
   parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
   staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
   // Auto-created transactions point back at the record that generated them
-  source: text('source'), // animal_sale|animal_purchase|health|equipment_log|null
+  source: text('source'), // animal_sale|animal_purchase|health|equipment_log|field_event|null
   sourceId: integer('source_id'),
   createdBy: integer('created_by'),
   createdAt: createdAt(),

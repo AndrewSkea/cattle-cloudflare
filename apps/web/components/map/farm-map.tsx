@@ -68,7 +68,7 @@ export default function FarmMap(props: Props) {
       cbs.current.onDrawn?.(geojson, areaHa)
     })
     map.current = m
-    return () => { m.remove(); map.current = null }
+    return () => { m.stop(); m.remove(); map.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

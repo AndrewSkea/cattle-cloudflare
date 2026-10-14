@@ -475,3 +475,87 @@ export interface FeedbackItem {
   userName: string
   createdAt: string
 }
+
+export interface FieldCrop {
+  id: number
+  parcelId: number
+  crop: string
+  variety: string | null
+  purpose: string
+  status: 'planned' | 'growing' | 'finished'
+  startDate: string | null
+  expectedHarvest: string | null
+  endDate: string | null
+  notes: string | null
+}
+
+export interface FieldReading {
+  id?: number
+  kind: string
+  label: string | null
+  value: number
+  unit: string | null
+  latitude: number | null
+  longitude: number | null
+  date?: string
+  eventId?: number
+}
+
+export interface FieldEvent {
+  id: number
+  parcelId: number
+  cropId: number | null
+  type: string
+  status: 'done' | 'planned'
+  date: string
+  endDate: string | null
+  product: string | null
+  rate: number | null
+  rateUnit: string | null
+  areaHa: number | null
+  nKgHa: number | null
+  pKgHa: number | null
+  kKgHa: number | null
+  sKgHa: number | null
+  yieldAmount: number | null
+  yieldUnit: string | null
+  moisturePct: number | null
+  dryMatterPct: number | null
+  noGrazeUntil: string | null
+  cost: number | null
+  contractor: string | null
+  equipmentId: number | null
+  notes: string | null
+  readings: FieldReading[]
+}
+
+export interface FieldGrazing { head: number; since: string | null; lastOut: string | null; restDays: number | null }
+
+export interface FieldDetail {
+  parcel: Parcel
+  crops: FieldCrop[]
+  events: FieldEvent[]
+  grazing: FieldGrazing & { history: { date: string; in: number; out: number }[] }
+}
+
+export interface FieldSummary {
+  parcelId: number
+  crop: FieldCrop | null
+  nextCrop: FieldCrop | null
+  lastEvent: { type: string; date: string; product: string | null } | null
+  nextPlanned: { type: string; date: string; product: string | null } | null
+  plannedCount: number
+  noGrazeUntil: string | null
+  nutrients: { n: number; p: number; k: number }
+  lastSoilTest: string | null
+  lastPh: { value: number; date: string } | null
+  grazing: FieldGrazing
+}
+
+export interface FieldsOverview {
+  year: number
+  fields: FieldSummary[]
+  crops: FieldCrop[]
+  events: { id: number; parcelId: number; type: string; status: string; date: string; endDate: string | null; product: string | null }[]
+  planned: { id: number; parcelId: number; type: string; date: string; product: string | null }[]
+}

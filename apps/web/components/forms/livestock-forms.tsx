@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox, Field, FormError, FormGrid, FormSection, Input, Segmented, SelectField, TextField, TextareaField, formValues } from '@/components/ui/form'
 import { Sheet, useConfirm } from '@/components/ui/overlay'
 import { Picker, type PickerOption } from '@/components/ui/picker'
-import { api, useAnimalOptions, useParcels, useSave, useStructures } from '@/lib/queries'
+import { api, useAnimalOptions, useFieldsOverview, useParcels, useSave, useStructures } from '@/lib/queries'
 import { ApiError } from '@/lib/api'
 import { BIRTH_EASE, BREEDS, HEALTH_TYPES, SPECIES, speciesInfo } from '@/lib/constants'
 import { addDaysISO, animalLabel, calfNumber, fmtAge, fmtDate, isYoungStockNumber, nextHerdNumber, todayISO } from '@/lib/format'
@@ -409,14 +409,19 @@ export function ExitSheet({ open, onClose, animal }: { open: boolean; onClose: (
 export function MoveSheet({ open, onClose, animalIds }: { open: boolean; onClose: () => void; animalIds: number[] }) {
   const { data: parcels = [] } = useParcels()
   const { data: structures = [] } = useStructures()
+  const { data: fields } = useFieldsOverview()
+  const [to, setTo] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const noGraze = to ? fields?.fields.find((f) => f.parcelId === to)?.noGrazeUntil : null
   const save = useSave((body: any) => api.post('/api/animals/bulk/move', { ...body, ids: animalIds }), {
     invalidate: LIVESTOCK, success: `Moved ${animalIds.length} animal${animalIds.length === 1 ? '' : 's'}`, silentError: true, onSuccess: onClose,
   })
   return (
     <Sheet open={open} onClose={onClose} title={`Move ${animalIds.length} animal${animalIds.length === 1 ? '' : 's'}`} description="Moves are kept in each animal's history." footer={<SheetFooter formId="move-form" onClose={onClose} busy={save.isPending} label="Move" />}>
       <form id="move-form" className="space-y-5" onSubmit={(e) => { e.preventDefault(); save.mutate(formValues(e.currentTarget), { onError: (err) => setError(err.message) }) }}>
-        <SelectField label="To field" name="parcelId" data-number placeholder="No field" options={parcels.map((p) => ({ value: p.id, label: `${p.name}${p.animalCount ? ` (${p.animalCount} now)` : ''}` }))} />
+        <SelectField label="To field" name="parcelId" data-number placeholder="No field" onChange={(e) => setTo(e.target.value ? Number(e.target.value) : null)}
+          options={parcels.map((p) => ({ value: p.id, label: `${p.name}${p.animalCount ? ` (${p.animalCount} now)` : ''}` }))} />
+        {noGraze && <p role="alert" className="rounded-lg bg-clay-50 px-3 py-2 text-sm text-clay-800 ring-1 ring-clay-200">This field was sprayed: keep stock off until {fmtDate(noGraze)}.</p>}
         <SelectField label="Into building" name="structureId" data-number placeholder="Not housed" options={structures.map((p) => ({ value: p.id, label: p.name }))} />
         <TextField label="Date" name="date" type="date" required defaultValue={todayISO()} max={todayISO()} />
         <TextareaField label="Notes" name="notes" rows={2} />

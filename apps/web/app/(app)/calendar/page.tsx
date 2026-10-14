@@ -10,13 +10,14 @@ import { Card, PageHeader } from '@/components/ui/display'
 import { getData } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-interface Event { date: string; kind: 'task' | 'health' | 'birth' | 'equipment'; title: string; link: string; done?: boolean }
+interface Event { date: string; kind: 'task' | 'health' | 'birth' | 'equipment' | 'field'; title: string; link: string; done?: boolean }
 
 const KIND: Record<Event['kind'], { label: string; cls: string; dot: string }> = {
   task: { label: 'Tasks', cls: 'bg-stone-100 text-stone-700', dot: 'bg-stone-500' },
   health: { label: 'Health', cls: 'bg-sky-50 text-sky-800', dot: 'bg-sky-500' },
   birth: { label: 'Births due', cls: 'bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500' },
   equipment: { label: 'Equipment', cls: 'bg-amber-50 text-amber-800', dot: 'bg-amber-500' },
+  field: { label: 'Field work', cls: 'bg-lime-50 text-lime-900', dot: 'bg-lime-600' },
 }
 
 export default function CalendarPage() {
@@ -41,7 +42,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Calendar" description="Tasks, health follow-ups, due dates and machinery deadlines in one view."
+      <PageHeader title="Calendar" description="Tasks, health follow-ups, due dates, field work and machinery deadlines in one view."
         actions={<>
           <Button variant="secondary" size="icon" onClick={() => setMonth((m) => addMonths(m, -1))} aria-label="Previous month"><ChevronLeft /></Button>
           <Button variant="secondary" onClick={() => setMonth(startOfMonth(new Date()))}>Today</Button>

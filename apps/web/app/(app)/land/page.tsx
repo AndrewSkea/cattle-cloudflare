@@ -4,14 +4,15 @@ import { useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
-import { Home, Map as MapIcon, MapPin, Move, Pencil, PenTool, Plus, Shapes, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, ChevronLeft, ChevronRight, Home, Map as MapIcon, MapPin, Move, Pencil, PenTool, Plus, Shapes, Sprout, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, DescriptionList, EmptyState, PageHeader, Skeleton } from '@/components/ui/display'
+import { Badge, Card, CardHeader, DescriptionList, EmptyState, PageHeader, Skeleton } from '@/components/ui/display'
+import { SeasonChart } from '@/components/season-chart'
 import { FormError, FormGrid, Input, SelectField, TextField, TextareaField, Field, formValues } from '@/components/ui/form'
 import { Menu, MenuItem, Sheet, Tabs, useConfirm, useToast } from '@/components/ui/overlay'
-import { api, useParcels, useSave, useStructures } from '@/lib/queries'
-import { LAND_USES, STRUCTURE_KINDS, TENURES, landUse, speciesInfo, structureKind } from '@/lib/constants'
-import { fmtArea, fmtMoney, fmtNum } from '@/lib/format'
+import { api, useFieldsOverview, useParcels, useSave, useStructures } from '@/lib/queries'
+import { LAND_USES, STRUCTURE_KINDS, TENURES, cropInfo, cropLabel, fieldEventType, landUse, speciesInfo, structureKind } from '@/lib/constants'
+import { fmtArea, fmtDate, fmtDue, fmtMoney, fmtNum, todayISO } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import type { Parcel, Structure } from '@/lib/types'
@@ -29,6 +30,10 @@ export default function LandPage() {
   const [mode, setMode] = useState<MapMode>({ kind: 'view' })
   const [selected, setSelected] = useState<Selection>(null)
   const [list, setList] = useState<'fields' | 'buildings'>('fields')
+  const [year, setYear] = useState(() => new Date().getFullYear())
+  const { data: overview } = useFieldsOverview()
+  const { data: season } = useFieldsOverview(year)
+  const info = useMemo(() => new Map((overview?.fields || []).map((f) => [f.parcelId, f])), [overview])
   const [sheet, setSheet] = useState<null | { kind: 'parcel'; parcel?: Parcel; polygon?: string; areaHa?: number } | { kind: 'structure'; structure?: Structure; lat?: number; lng?: number }>(null)
 
   const invalidate = ['land', 'structures', 'animals']
@@ -126,8 +131,16 @@ export default function LandPage() {
                     { label: 'Capacity', value: selParcel.capacity, hidden: !selParcel.capacity },
                     { label: 'Stocking', value: selParcel.areaHa && selParcel.animalCount ? `${fmtNum(selParcel.animalCount / selParcel.areaHa, 1)} / ha` : '—' },
                     { label: 'Soil', value: selParcel.soilType, hidden: !selParcel.soilType },
+                    { label: 'Crop', value: info.get(selParcel.id)?.crop ? cropLabel(info.get(selParcel.id)!.crop!) : '—' },
+                    { label: 'Rested', value: `${info.get(selParcel.id)?.grazing.restDays} days`, hidden: info.get(selParcel.id)?.grazing.restDays == null },
+                    { label: 'Last job', value: (() => { const e = info.get(selParcel.id)?.lastEvent; return e ? `${fieldEventType(e.type).short}${e.product ? ` (${e.product})` : ''}, ${fmtDate(e.date, 'd MMM')}` : null })(), hidden: !info.get(selParcel.id)?.lastEvent },
+                    { label: 'Next job', value: (() => { const e = info.get(selParcel.id)?.nextPlanned; return e ? `${fieldEventType(e.type).short}, ${fmtDue(e.date)}` : null })(), hidden: !info.get(selParcel.id)?.nextPlanned },
                   ]} />
-                ) : (
+                ) : null}
+                {selParcel && info.get(selParcel.id)?.noGrazeUntil && (
+                  <p className="mt-4 flex items-center gap-2 rounded-lg bg-clay-50 px-3 py-2 text-xs font-medium text-clay-800"><AlertTriangle className="size-4 shrink-0" />Sprayed: keep stock off until {fmtDate(info.get(selParcel.id)!.noGrazeUntil, 'd MMM')}</p>
+                )}
+                {selParcel ? null : (
                   <DescriptionList items={[
                     { label: 'Housing now', value: selStructure!.animalCount || 'Empty' },
                     { label: 'Capacity', value: selStructure!.capacity, hidden: !selStructure!.capacity },
@@ -137,6 +150,7 @@ export default function LandPage() {
                 )}
                 {(selParcel?.notes || selStructure?.notes) && <p className="mt-4 whitespace-pre-wrap text-sm text-stone-600">{selParcel?.notes || selStructure?.notes}</p>}
                 <div className="mt-5 flex flex-wrap gap-2">
+                  {selParcel && <Link href={`/land/field?id=${selParcel.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-700 px-3 text-[13px] font-medium text-white hover:bg-brand-800">Crops & records<ArrowRight className="size-3.5" /></Link>}
                   {(selParcel?.animalCount || selStructure?.animalCount) ? <Link href={`/livestock?location=${encodeURIComponent((selParcel?.name || selStructure?.name)!)}`} className="inline-flex h-8 items-center rounded-lg px-3 text-[13px] font-medium text-brand-700 hover:bg-brand-50">View animals</Link> : null}
                   {can('worker') && selParcel && <>
                     <Button size="sm" variant="secondary" onClick={() => setSheet({ kind: 'parcel', parcel: selParcel })}><Pencil />Edit</Button>
@@ -174,7 +188,8 @@ export default function LandPage() {
                       <span className="size-3 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: p.color || landUse(p.landUse).color }} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-stone-900">{p.name}</span>
-                        <span className="block text-xs text-stone-500">{landUse(p.landUse).label}{p.tenure !== 'owned' ? ` · ${TENURES.find((t) => t.value === p.tenure)?.label}` : ''}{!p.polygon ? ' · not on map' : ''}</span>
+                        <span className="block truncate text-xs text-stone-500">{info.get(p.id)?.crop ? cropInfo(info.get(p.id)!.crop!.crop).label : landUse(p.landUse).label}{p.tenure !== 'owned' ? ` · ${TENURES.find((t) => t.value === p.tenure)?.label}` : ''}{!p.polygon ? ' · not on map' : ''}{info.get(p.id)?.grazing.restDays != null ? ` · rested ${info.get(p.id)!.grazing.restDays}d` : ''}</span>
+                        {info.get(p.id)?.noGrazeUntil && <span className="mt-0.5 block text-[11px] font-medium text-clay-700">Stock off until {fmtDate(info.get(p.id)!.noGrazeUntil, 'd MMM')}</span>}
                       </span>
                       <span className="text-right text-xs text-stone-500 tabular">{fmtArea(p.areaHa, farm.areaUnit)}{p.animalCount > 0 && <span className="block text-brand-700">{p.animalCount} head</span>}</span>
                     </button>
@@ -203,8 +218,43 @@ export default function LandPage() {
               </div>
             )}
           </Card>
+          {parcels.length > 0 && (
+            <Card>
+              <CardHeader title="Field work planned" icon={CalendarClock} />
+              {!overview?.planned.length ? (
+                <p className="px-5 pb-5 pt-3 text-sm text-stone-500">Nothing planned. Open a field and use “Plan work” for spreading, spraying, reseeding or cutting.</p>
+              ) : (
+                <ul className="mt-3 max-h-[360px] divide-y divide-stone-100 overflow-y-auto">
+                  {overview.planned.map((e) => (
+                    <li key={e.id}>
+                      <Link href={`/land/field?id=${e.parcelId}`} className="flex items-center gap-3 px-5 py-2.5 hover:bg-stone-50">
+                        <span className="size-2.5 shrink-0 rounded-full" style={{ background: fieldEventType(e.type).color }} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-stone-900">{fieldEventType(e.type).short}{e.product ? ` · ${e.product}` : ''}</span>
+                          <span className="block text-xs text-stone-500">{parcels.find((p) => p.id === e.parcelId)?.name}</span>
+                        </span>
+                        <span className={`shrink-0 text-xs ${e.date < todayISO() ? 'font-medium text-clay-700' : 'text-stone-500'}`}>{fmtDue(e.date)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="h-3" />
+            </Card>
+          )}
         </div>
       </div>
+
+      {parcels.length > 0 && season && (
+        <Card className="min-w-0">
+          <CardHeader title={`Season ${year}`} icon={Sprout} description="Crops in each field and every job done or planned. Open a field to add records."
+            action={<div className="flex gap-1">
+              <Button size="icon" variant="secondary" onClick={() => setYear((y) => y - 1)} aria-label="Previous year"><ChevronLeft /></Button>
+              <Button size="icon" variant="secondary" onClick={() => setYear((y) => y + 1)} aria-label="Next year"><ChevronRight /></Button>
+            </div>} />
+          <div className="mt-4"><SeasonChart data={season} parcels={parcels} /></div>
+        </Card>
+      )}
 
       {sheet?.kind === 'parcel' && <ParcelSheet onClose={() => setSheet(null)} parcel={sheet.parcel} polygon={sheet.polygon} areaHa={sheet.areaHa} onSaved={(id) => setSelected({ type: 'parcel', id })} />}
       {sheet?.kind === 'structure' && <StructureSheet onClose={() => setSheet(null)} structure={sheet.structure} lat={sheet.lat} lng={sheet.lng} parcels={parcels} onSaved={(id) => setSelected({ type: 'structure', id })} />}

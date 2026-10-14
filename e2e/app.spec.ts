@@ -613,3 +613,78 @@ test('phone: bottom bar with quick add', async ({ browser }) => {
   await expect(dialog(phone, 'Record a birth')).toBeVisible()
   await ctx.close()
 })
+
+test('fields: crop, fertiliser nutrients, spray stock-off, planned work, readings on the map', async () => {
+  await page.goto('/land')
+  await page.getByRole('button', { name: /Drawn Field/ }).first().click()
+  await page.getByRole('link', { name: /Crops & records/ }).click()
+  await expect(page.getByRole('heading', { name: 'Drawn Field' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Add what’s growing' }).click()
+  await page.getByRole('button', { name: 'Grass & clover', exact: true }).click()
+  await page.getByText('Long-standing grass, date unknown').click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Crop added')).toBeVisible()
+
+  // Fertiliser: the analysis and rate work out the nutrients; the cost goes to Finances
+  await page.getByRole('button', { name: 'Add record' }).first().click()
+  await page.getByRole('button', { name: 'Fertiliser', exact: true }).click()
+  await page.getByLabel('Product').fill('Grass compound')
+  await page.getByLabel('Analysis (N-P-K-S)').fill('20-10-10')
+  await page.getByLabel(L('Rate')).fill('250')
+  await expect(page.getByLabel('N kg/ha')).toHaveValue('50')
+  await page.getByLabel(L('Cost')).fill('320')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('N 50 · P 25 · K 25 kg/ha')).toBeVisible()
+
+  // Spray with a stock-off period: warning on the field and when moving animals in
+  await page.getByRole('button', { name: 'Add record' }).first().click()
+  await page.getByRole('button', { name: 'Spray', exact: true }).click()
+  await page.getByLabel('Product / target').fill('Docks')
+  await page.getByLabel('Keep stock off for (days)').fill('14')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText(/Keep stock off until/)).toBeVisible()
+
+  // Planned work: shows as planned, then ticked off
+  await page.getByRole('button', { name: 'Plan work' }).click()
+  await page.getByRole('button', { name: 'Lime', exact: true }).click()
+  await page.getByLabel(L('Rate')).fill('5')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Planned' })).toBeVisible()
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByText('Marked done')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Planned' })).toHaveCount(0)
+
+  // Readings placed on the field map
+  await page.getByRole('button', { name: 'Add record' }).first().click()
+  await page.getByRole('button', { name: 'Readings', exact: true }).click()
+  const map = dialog(page, /readings/).locator('.leaflet-container')
+  await expect(map).toBeVisible()
+  await page.waitForTimeout(500)
+  const box = (await map.boundingBox())!
+  for (const [i, v] of ['24', '41'].entries()) {
+    await page.mouse.click(box.x + box.width * (0.45 + i * 0.1), box.y + box.height * 0.5)
+    await page.getByLabel('Soil moisture value').nth(i).fill(v)
+  }
+  await expect(page.getByLabel('Soil moisture value')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('tab', { name: /Readings/ }).click()
+  await expect(page.locator('.leaflet-marker-icon')).toHaveCount(2)
+  await expect(page.getByText(/Average 32\.5 %/)).toBeVisible()
+
+  const txns = await (await page.request.get('/api/finance/transactions')).json()
+  expect(txns.data.some((t: any) => t.source === 'field_event' && t.amount === 320 && t.category === 'fertiliser_seed')).toBeTruthy()
+
+  await page.goto('/livestock')
+  await page.getByRole('textbox', { name: 'Search animals' }).fill('UK523801-200788')
+  await page.getByRole('checkbox', { name: 'Select UK523801-200788' }).check()
+  await page.getByRole('button', { name: 'Move', exact: true }).click()
+  await dialog(page, 'Move 1 animal').getByLabel(L('To field')).selectOption({ label: 'Drawn Field' })
+  await expect(dialog(page, 'Move 1 animal').getByRole('alert')).toContainText('keep stock off')
+
+  // The season chart and calendar show the field's work
+  await page.goto('/land')
+  await expect(page.getByRole('heading', { name: /Season \d{4}/ })).toBeVisible()
+  const cal = await (await page.request.get('/api/dashboard/calendar')).json()
+  expect(cal.data.some((e: any) => e.kind === 'field' && e.title === 'Fertiliser: Grass compound — Drawn Field')).toBeTruthy()
+})

@@ -9,6 +9,7 @@ import { type AppEnv, addDays, farmSession, requireRole, roleAtLeast, today } fr
 import { ageMonths, classify, loadFarmGraph } from '../services/livestock';
 import { serviceStatus } from './resources';
 import { complianceSummary } from '../services/compliance';
+import { plannedFieldWork } from './fields';
 
 const dashboard = new Hono<AppEnv>();
 dashboard.use('*', requireRole('viewer'));
@@ -153,6 +154,9 @@ dashboard.get('/calendar', async (c) => {
     for (const [d, label] of [[st.nextServiceDate, 'service'], [e.motDue, 'MOT'], [e.insuranceDue, 'insurance']] as const) {
       if (d && d >= from && d <= to) events.push({ date: d, kind: 'equipment', title: `${e.name} ${label}`, link: `/equipment/view?id=${e.id}` });
     }
+  }
+  for (const f of await plannedFieldWork(db, s.farmId, from, to)) {
+    events.push({ date: f.date, kind: 'field', title: `${f.label} — ${f.field}`, link: `/land/field?id=${f.parcelId}`, done: f.status === 'done' });
   }
   events.sort((a, b) => a.date.localeCompare(b.date));
   return c.json({ data: events });

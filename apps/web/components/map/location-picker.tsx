@@ -60,7 +60,7 @@ export default function LocationPicker({ value, onChange, height = 320 }: { valu
         cb.current({ latitude: p.lat, longitude: p.lng, zoom: m.getZoom() })
       }
     })
-    return () => { m.remove(); map.current = null; marker.current = null }
+    return () => { m.stop(); m.remove(); map.current = null; marker.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

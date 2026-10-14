@@ -1,5 +1,14 @@
 import L from 'leaflet'
 
+// Leaflet finishes a zoom animation on a 250 ms timer; if the map was removed meanwhile (navigating away, closing a
+// sheet) it throws "_leaflet_pos of undefined". Skip the finish when the map is gone.
+const proto = L.Map.prototype as any
+if (!proto.__safeZoomEnd) {
+  const end = proto._onZoomTransitionEnd
+  proto._onZoomTransitionEnd = function (this: any, ...args: unknown[]) { if (this._mapPane) return end.apply(this, args) }
+  proto.__safeZoomEnd = true
+}
+
 export const DEFAULT_CENTER: [number, number] = [54.5, -3.2] // UK
 export const DEFAULT_ZOOM = 6
 
