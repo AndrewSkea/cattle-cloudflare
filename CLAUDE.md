@@ -26,7 +26,8 @@ apps/
     src/routes/             auth, farm, animals, records (health/weights/breeding/births/movements),
                             resources (land/structures/equipment/staff/tasks/inventory), finance, dashboard,
                             mart (Orkney Mart matches/import/prices), compliance (+ scoteid, + dev ScotEID mock),
-                            fields (crops, field timeline, readings, season overview)
+                            fields (crops, field timeline, readings, season overview),
+                            sales (mart sale statement PDFs: preview/import/undo), value (animal value over time, monthly prices)
     src/services/           livestock (classes, family graph & stats), finance (auto transactions), exit (sale/death),
                             mart/parse (report parser, pure), mart/orkney (fetch, store, match, candidates),
                             mart/insights (herd value at mart prices, best months to sell), push (Web Push, VAPID,
@@ -81,6 +82,20 @@ Key decisions:
   records become `field_event` transactions. Rest days come from animal moves (`movements`) plus manual grazing records.
   Planned work shows in the Calendar and the 8am reminder; Land shows a season chart (`components/season-chart.tsx`).
   Leaflet: `leaflet-base.ts` patches zoom-end after a map is removed (closing a sheet mid-zoom threw `_leaflet_pos`).
+- **Mart sale statements (PDF):** Mart sales page (and Quick add → Mart sale) has a drop zone; dropping the mart's emailed
+  "Sellers List" PDF anywhere on that page works too. The PDF is read in the browser (`lib/ocr.ts`: the mart's PDFs
+  are scanned JPEGs, pulled out of the PDF and read with Tesseract.js from jsdelivr; text PDFs go through pdf.js from
+  cdnjs) and parsed by `lib/sale-statement.ts` (pure). Batches = consecutive lines with the same weight and price;
+  whether that price is per head or for the whole batch is decided by which adds up to the statement gross (gross is
+  cross-checked against net + charges and head × average, since OCR drops digits). The confirm pop-up
+  (`components/sale-statement.tsx`) shows the checks, each line (with a crop of the printed line), unmatched tags and
+  near-miss suggestions. `POST /api/sale-statements` marks every animal sold (price, weight record, buyer, sale
+  transaction), adds the mart charges as one `mart_charges` expense (`source = sale_statement`), ticks off matching
+  lots from the public sales report, and stores the statement; undo reverses all of it. Never commit a real statement:
+  the e2e test builds a made-up one.
+- **Value over time:** `services/value.ts` — weight from 0 kg at birth through every weighing (then typical gain,
+  capped), × price per kg each month: the farm's own `monthly_prices` (Prices per month sheet) or the Orkney Mart
+  average for the animal's class that month. Animal page "Growth & value" card, Reports "Value over time" (managers).
 - **Bank import:** Finances → Add → Import bank statement parses a CSV in the browser (`lib/bank-csv.ts`, guesses
   categories); `POST /api/finance/import` skips lines matching an existing date + amount + description.
 - **Orkney Mart:** reports come from the mart's WordPress events API (`/wp-json/tribe/events/v1/events?categories=sales-report`).

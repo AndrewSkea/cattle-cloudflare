@@ -1,6 +1,6 @@
 'use client'
 
-import { Baby, ClipboardList, HeartPulse, Landmark, PawPrint, Sprout, TrendingUp, Wallet } from 'lucide-react'
+import { Baby, ClipboardList, FileUp, HeartPulse, Landmark, PawPrint, Sprout, TrendingUp, Wallet } from 'lucide-react'
 import { MenuItem } from './ui/overlay'
 import { AnimalSheet, BirthSheet, BreedingSheet, HealthSheet, WeightSheet } from './forms/livestock-forms'
 import { TaskSheet, TransactionSheet } from './forms/other-forms'
@@ -21,6 +21,7 @@ export function QuickAddItems({ onPick }: { onPick: (k: Exclude<QuickAddKind, nu
       {shows('tasks') && <MenuItem icon={ClipboardList} onClick={() => onPick('task')}>Task</MenuItem>}
       {can('manager') && shows('finance') && <MenuItem icon={Wallet} onClick={() => onPick('expense')}>Expense</MenuItem>}
       {can('manager') && shows('finance') && <MenuItem icon={Landmark} onClick={() => onPick('income')}>Income</MenuItem>}
+      {can('worker') && shows('mart') && <MenuItem icon={FileUp} href="/mart#statement">Mart sale (PDF)</MenuItem>}
     </>
   )
 }

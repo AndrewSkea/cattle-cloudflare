@@ -41,5 +41,5 @@ export const INVENTORY_CATEGORIES = ['feed', 'medicine', 'vaccine', 'fertiliser'
 export const INCOME_CATEGORIES = ['livestock_sales', 'subsidies', 'crop_sales', 'contracting', 'milk_wool', 'rent_received', 'other_income'] as const;
 export const EXPENSE_CATEGORIES = [
   'feed', 'vet_medicine', 'wages', 'machinery', 'fuel', 'fertiliser_seed', 'rent', 'livestock_purchases',
-  'contractors', 'repairs', 'utilities', 'insurance', 'bedding', 'professional_fees', 'other_expense',
+  'contractors', 'repairs', 'utilities', 'insurance', 'bedding', 'professional_fees', 'mart_charges', 'other_expense',
 ] as const;

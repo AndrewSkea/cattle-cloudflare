@@ -13,6 +13,7 @@ import { getData } from '@/lib/api'
 import type { AnimalListItem, BirthRecord } from '@/lib/types'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
+import { HerdValueCard } from '@/components/animal-value'
 
 const PALETTE = ['#275040', '#3f7d5c', '#5f9a79', '#8fbba1', '#c8923a', '#dfb96f', '#c65a3f', '#78716c', '#0ea5e9', '#a78bfa']
 const tooltipStyle = { borderRadius: 10, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,.12)', fontSize: 12 }
@@ -218,6 +219,8 @@ export default function ReportsPage() {
       {sp === 'cattle' && <OffspringPerformance animals={animals} births={births || []} currency={currency} showMoney={can('manager')} />}
 
       {sp === 'cattle' && shows('mart') && <MartInsights currency={currency} />}
+
+      {sp === 'cattle' && can('manager') && <HerdValueCard />}
 
       {can('manager') && r.yearly.some((y) => y.avgPrice) && (
         <Card>

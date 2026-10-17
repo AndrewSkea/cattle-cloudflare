@@ -477,7 +477,7 @@ export const transactions = sqliteTable('transactions', {
   parcelId: integer('parcel_id').references(() => landParcels.id, { onDelete: 'set null' }),
   staffId: integer('staff_id').references(() => staff.id, { onDelete: 'set null' }),
   // Auto-created transactions point back at the record that generated them
-  source: text('source'), // animal_sale|animal_purchase|health|equipment_log|field_event|null
+  source: text('source'), // animal_sale|animal_purchase|health|equipment_log|field_event|sale_statement|null
   sourceId: integer('source_id'),
   createdBy: integer('created_by'),
   createdAt: createdAt(),
@@ -656,4 +656,45 @@ export const pushSubscriptions = sqliteTable('push_subscriptions', {
   createdAt: createdAt(),
 }, (t) => ({
   user: index('idx_push_user').on(t.userId),
+}));
+
+/**
+ * A mart sale statement (the seller's PDF, e.g. Orkney Mart "Sellers List for SPECIAL SALE") imported in one go.
+ * `lots` keeps what was confirmed (per animal: lot, tag, price, weight, buyer); undo reverses every sale in it.
+ */
+export const saleStatements = sqliteTable('sale_statements', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  mart: text('mart').notNull().default('Orkney Auction Mart'),
+  saleRef: text('sale_ref'), // e.g. S458
+  title: text('title'), // e.g. SPECIAL SALE
+  date: text('date').notNull(),
+  fileName: text('file_name'),
+  headCount: integer('head_count').notNull(),
+  gross: real('gross').notNull(),
+  commission: real('commission'),
+  insurance: real('insurance'),
+  vat: real('vat'),
+  otherCharges: real('other_charges'),
+  net: real('net'),
+  lots: text('lots').notNull(), // JSON
+  animalIds: text('animal_ids').notNull(), // JSON
+  matchIds: text('match_ids'), // JSON: mart report matches marked imported by this statement
+  status: text('status').notNull().default('imported'), // imported|undone
+  createdBy: integer('created_by'),
+  createdAt: createdAt(),
+}, (t) => ({
+  farmDate: index('idx_sale_statement_farm_date').on(t.farmId, t.date),
+}));
+
+/** The farm's own price (pence per kg liveweight) for a month, used to value animals over their lives. */
+export const monthlyPrices = sqliteTable('monthly_prices', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  farmId: integer('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  species: text('species').notNull().default('cattle'),
+  month: text('month').notNull(), // YYYY-MM
+  ppk: real('ppk').notNull(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  farmMonth: uniqueIndex('ux_monthly_price').on(t.farmId, t.species, t.month),
 }));

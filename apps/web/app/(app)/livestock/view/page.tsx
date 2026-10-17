@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardHeader, DescriptionList, EmptyState, PageSkeleton } from '@/components/ui/display'
 import { Menu, MenuDivider, MenuItem, Tabs, useConfirm } from '@/components/ui/overlay'
+import { AnimalValueCard } from '@/components/animal-value'
 import { AnimalSheet, BirthSheet, BreedingSheet, ExitSheet, HealthSheet, WeightSheet } from '@/components/forms/livestock-forms'
 import { FamilyView } from '@/components/family'
 import { api, useSave } from '@/lib/queries'
@@ -167,6 +168,7 @@ function AnimalView() {
                 {a.notes && <div className="mt-5 rounded-xl bg-wheat-50 px-4 py-3 text-sm text-stone-700 ring-1 ring-wheat-200/70"><p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-wheat-700">Notes</p><p className="whitespace-pre-wrap">{a.notes}</p></div>}
               </div>
             </Card>
+            {can('manager') && <AnimalValueCard animalId={id} sold={a.status === 'sold' || a.status === 'culled'} />}
             <Card>
               <CardHeader title="Recent history" />
               <Timeline r={r} />

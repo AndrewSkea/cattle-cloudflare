@@ -73,10 +73,11 @@ export function Sheet({ open, onClose, title, description, children, footer, wid
 }
 
 export function Modal({ open, onClose, title, description, children, footer, size = 'md' }: {
-  open: boolean; onClose: () => void; title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; footer?: React.ReactNode; size?: 'sm' | 'md' | 'lg'
+  open: boolean; onClose: () => void; title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; footer?: React.ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl'
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
+  const xl = size === 'xl'
   useLockBody(open)
   useEscape(open, onClose)
   useAutoFocus(open, ref)
@@ -86,13 +87,13 @@ export function Modal({ open, onClose, title, description, children, footer, siz
       <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
         <div className="absolute inset-0 animate-fade-in bg-stone-950/35 backdrop-blur-[2px]" onClick={onClose} />
         <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId}
-          className={cn('relative w-full animate-scale-in rounded-2xl bg-white shadow-pop', size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : 'max-w-md')}>
-          <div className="px-6 pt-6">
+          className={cn('relative w-full animate-scale-in rounded-2xl bg-white shadow-pop', size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : xl ? 'flex max-h-[calc(100dvh-2rem)] max-w-6xl flex-col' : 'max-w-md')}>
+          <div className={cn('px-6 pt-6', xl && 'shrink-0 max-sm:px-4')}>
             <h2 id={titleId} className="text-lg font-semibold text-stone-900">{title}</h2>
             {description && <div className="mt-1.5 text-sm text-stone-600">{description}</div>}
           </div>
-          {children && <div className="px-6 pt-4">{children}</div>}
-          <div className="mt-6 flex justify-end gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50/60 px-6 py-4">{footer}</div>
+          {children && <div className={cn('px-6 pt-4', xl && 'min-h-0 flex-1 overflow-y-auto pb-4 scrollbar-thin max-sm:px-4')}>{children}</div>}
+          <div className={cn('mt-6 flex justify-end gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50/60 px-6 py-4', xl && 'mt-0 shrink-0 flex-wrap items-center max-sm:px-4')}>{footer}</div>
         </div>
       </div>
     </Portal>

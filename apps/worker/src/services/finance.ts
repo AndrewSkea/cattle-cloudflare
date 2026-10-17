@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DrizzleD1Database } from '../db/client';
 
-type Source = 'animal_sale' | 'animal_purchase' | 'health' | 'equipment_log' | 'field_event';
+type Source = 'animal_sale' | 'animal_purchase' | 'health' | 'equipment_log' | 'field_event' | 'sale_statement';
 
 export interface SourceTxn {
   type: 'income' | 'expense';

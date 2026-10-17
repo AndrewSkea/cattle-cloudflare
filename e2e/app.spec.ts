@@ -688,3 +688,75 @@ test('fields: crop, fertiliser nutrients, spray stock-off, planned work, reading
   const cal = await (await page.request.get('/api/dashboard/calendar')).json()
   expect(cal.data.some((e: any) => e.kind === 'field' && e.title === 'Fertiliser: Grass compound — Drawn Field')).toBeTruthy()
 })
+
+/** A one-page scanned PDF (a JPEG on a page), like the mart's emailed sellers list. */
+function jpegPdf(jpeg: Buffer, w: number, h: number) {
+  const content = Buffer.from(`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q`)
+  const parts: Buffer[] = [
+    Buffer.from('%PDF-1.4\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n2 0 obj <</Type/Pages/Kids[3 0 R]/Count 1>> endobj\n'),
+    Buffer.from(`3 0 obj <</Type/Page/Parent 2 0 R/MediaBox[0 0 ${w} ${h}]/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>> endobj\n`),
+    Buffer.from(`4 0 obj <</Type/XObject/Subtype/Image/Width ${w}/Height ${h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${jpeg.length}>>\nstream\n`),
+    jpeg,
+    Buffer.from(`\nendstream endobj\n5 0 obj <</Length ${content.length}>>\nstream\n`), content, Buffer.from('\nendstream endobj\ntrailer <</Root 1 0 R>>\n%%EOF\n'),
+  ]
+  return Buffer.concat(parts)
+}
+
+test('mart sale statement PDF: read, check, batch prices, import and undo', async ({ browser }) => {
+  test.setTimeout(150_000)
+  // Made-up cattle with valid UK tags (check digit = (herd mark & number) mod 7 + 1)
+  const tag = (n: string) => `UK999001${(Number(`999001${n}`) % 7) + 1}${n}`
+  const lots = [
+    { lot: '701', n: '00101', sex: 'STR', dob: '2025-02-10', kg: '450.0', price: '1500.00', buyer: 'GREEN FARM' },
+    { lot: '702', n: '00102', sex: 'HFR', dob: '2025-03-01', kg: '400.0', price: '3000.00', buyer: 'BLUE FARM' },
+    { lot: '702', n: '00103', sex: 'HFR', dob: '2025-03-05', kg: '400.0', price: '3000.00', buyer: 'BLUE FARM' },
+    { lot: '702', n: '00104', sex: 'HFR', dob: '2025-03-09', kg: '400.0', price: '3000.00', buyer: 'BLUE FARM' },
+  ]
+  for (const l of lots) {
+    const r = await page.request.post('/api/animals', { data: { species: 'cattle', tagNo: tag(l.n), sex: l.sex === 'STR' ? 'male' : 'female', castrated: l.sex === 'STR', dob: l.dob, breed: 'Charolais', origin: 'born' } })
+    expect(r.ok(), await r.text()).toBeTruthy()
+  }
+  // Lot 702 is a batch of three sold for £3,000 together: the totals only add up if that price is split.
+  const d = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
+  const rows = lots.map((l) => `${l.lot.padEnd(6)}1    CH  ${l.sex} ${tag(l.n)}          ${d(l.dob)} ${l.kg.padStart(5)}          ${l.price.padStart(8)}\n            ${l.buyer}`).join('\n')
+  const text = `MESR TEST FARMER\nTEST FARM\n\n   S901        TEST SALE                               14/10/26\n                                              FA/No\n\n${rows}\n\n                                   Gross       4500.00\n                                   *COMMISSION  -120.00\n                                   Net         4380.00\n\n     4 STORE CATTLE   Av  412.50 wt  272.73 ppk  1125.00 pph`
+  const scan = await browser.newPage({ viewport: { width: 827, height: 700 } })
+  await scan.setContent(`<body style="margin:30px;background:#fff"><pre style="font:15px/1.5 'Courier New',Courier,monospace;color:#111">${text}</pre></body>`)
+  const jpeg = await scan.screenshot({ type: 'jpeg', quality: 92 })
+  await scan.close()
+  const pdf = jpegPdf(jpeg, 827, 700)
+
+  await page.goto('/mart')
+  await page.getByLabel('Sale statement PDF').setInputFiles({ name: 'S901-Sellers_List.pdf', mimeType: 'application/pdf', buffer: pdf })
+  const check = dialog(page, /Check this sale before importing/)
+  await expect(check).toBeVisible({ timeout: 90_000 })
+  await expect(check.getByTestId('statement-line')).toHaveCount(4, { timeout: 30_000 })
+  await expect(check.getByText('Orkney Auction Mart · S901')).toBeVisible()
+  await expect(check.getByText(/Wednesday 14 October 2026/)).toBeVisible()
+  await expect(check.getByText('All 4 animals found in your herd')).toBeVisible()
+  await expect(check.getByText('Prices add up to the statement’s gross, £4,500.00')).toBeVisible()
+  await expect(check.getByRole('radio', { name: 'Price for the batch' })).toHaveAttribute('aria-checked', 'true')
+  await expect(check.getByLabel('Price lot 702').first()).toHaveValue('1000')
+  await check.getByRole('button', { name: /Mark 4 as sold/ }).click()
+  await expect(dialog(page, 'Sale imported')).toBeVisible()
+  await dialog(page, 'Sale imported').getByRole('button', { name: 'Done' }).click()
+
+  const sold = ((await (await page.request.get('/api/animals?status=exited')).json()).data as any[]).filter((a) => a.exitDate === '2026-10-14')
+  expect(sold.map((a) => a.salePrice).sort()).toEqual([1000, 1000, 1000, 1500])
+  const txns = ((await (await page.request.get('/api/finance/transactions')).json()).data as any[]).filter((t) => t.date === '2026-10-14')
+  expect(txns.find((t) => t.category === 'mart_charges')?.amount).toBe(120)
+
+  // Value over the animal's life: 0 kg at birth up to the sale weight, ending at the sale price
+  const value = (await (await page.request.get(`/api/value/animal/${sold[0].id}`)).json()).data
+  expect(value.series[value.series.length - 1].sold).toBe(true)
+  expect(value.weighings.length).toBeGreaterThan(0)
+  await page.goto(`/livestock/view?id=${sold[0].id}`)
+  await expect(page.getByText('Growth & value')).toBeVisible()
+
+  // Undo puts them back
+  await page.goto('/mart')
+  await page.getByRole('tab', { name: /Statements/ }).click()
+  await page.getByRole('button', { name: 'Undo' }).first().click()
+  await page.getByRole('button', { name: 'Undo sale' }).click()
+  await expect(page.getByText('4 back in the herd')).toBeVisible()
+})

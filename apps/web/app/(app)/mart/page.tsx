@@ -15,8 +15,10 @@ import { fmtAge, fmtDate, fmtMoney, fmtNum, fmtRelative, titleCase, todayISO } f
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import type { MartCandidate, MartMatch, MartOverview } from '@/lib/types'
+import { SaleStatementDrop, useStatementFlow, type SaleStatementItem } from '@/components/sale-statement'
+import { MonthlyPricesSheet } from '@/components/animal-value'
 
-type Tab = 'new' | 'imported' | 'dismissed' | 'prices'
+type Tab = 'new' | 'imported' | 'dismissed' | 'statements' | 'prices'
 
 const tooltipStyle = { borderRadius: 10, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,.12)', fontSize: 12 }
 
@@ -27,6 +29,8 @@ export default function MartPage() {
   const [settings, setSettings] = useState(false)
   const [importing, setImporting] = useState<MartMatch | null>(null)
   const [dismissBefore, setDismissBefore] = useState(false)
+  const statement = useStatementFlow()
+  const statements = useQuery({ queryKey: ['sale-statements'], queryFn: () => getData<SaleStatementItem[]>('/api/sale-statements'), enabled: can('worker') })
   const refresh = useSave(() => api.post<{ data: { updated: number; matched: number; skipped?: boolean } }>('/api/mart/refresh'), {
     invalidate: ['mart'],
     success: (r) => r.data.skipped ? 'Checked a moment ago — try again in a couple of minutes' : r.data.updated ? `${r.data.updated} new report${r.data.updated === 1 ? '' : 's'} read` : 'No new reports since last check',
@@ -49,6 +53,9 @@ export default function MartPage() {
         </>}
       />
 
+      {can('worker') && <SaleStatementDrop onFile={statement.open} compact={configured} />}
+      {statement.dialog}
+
       {!configured ? <SetupCard canEdit={can('manager')} onDone={() => setTab('new')} /> : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -63,13 +70,14 @@ export default function MartPage() {
                 { value: 'new', label: 'To review', count: o.counts.new },
                 { value: 'imported', label: 'Imported', count: o.counts.imported },
                 { value: 'dismissed', label: 'Not ours', count: o.counts.dismissed },
+                ...(statements.data?.length ? [{ value: 'statements' as const, label: 'Statements', count: statements.data.filter((x) => x.status === 'imported').length }] : []),
                 { value: 'prices', label: 'Market prices' },
               ]} />
               {tab === 'new' && o.counts.new > 0 && can('manager') && (
                 <Button size="sm" variant="ghost" className="mb-2" onClick={() => setDismissBefore(true)}>Clear older sales…</Button>
               )}
             </div>
-            {tab === 'prices' ? <Prices /> : <Matches status={tab} onImport={setImporting} />}
+            {tab === 'prices' ? <Prices /> : tab === 'statements' ? <Statements rows={statements.data || []} /> : <Matches status={tab} onImport={setImporting} />}
           </Card>
         </>
       )}
@@ -381,6 +389,74 @@ function ImportSheet({ match: m, onClose }: { match: MartMatch; onClose: () => v
   )
 }
 
+// ---------------- Imported sale statements ----------------
+
+function Statements({ rows }: { rows: SaleStatementItem[] }) {
+  const { can, currency } = useSession()
+  const confirm = useConfirm()
+  const [open, setOpen] = useState<number | null>(null)
+  const undo = useSave((id: number) => api.post<{ data: { reinstated: number } }>(`/api/sale-statements/${id}/undo`), {
+    invalidate: ['sale-statements', 'mart', 'animals', 'finance', 'weights', 'value'], success: (r) => `${r.data.reinstated} back in the herd`,
+  })
+  if (!rows.length) return <EmptyState icon={Gavel} title="No statements imported" description="Drop the mart’s PDF above to import a sale." />
+  return (
+    <ul className="divide-y divide-stone-100">
+      {rows.map((st) => {
+        const charges = (st.commission ?? 0) + (st.insurance ?? 0) + (st.vat ?? 0) + (st.otherCharges ?? 0)
+        return (
+          <li key={st.id} className={cn('px-5 py-4', st.status !== 'imported' && 'opacity-60')}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-stone-900">{fmtDate(st.date, 'EEEE d MMMM yyyy')}</span>
+                  {st.saleRef && <Badge tone="gray">{st.saleRef}</Badge>}
+                  {st.title && <span className="text-sm text-stone-600">{titleCase(st.title.toLowerCase())}</span>}
+                  {st.status !== 'imported' && <Badge tone="gray">Undone</Badge>}
+                </div>
+                <p className="mt-1 truncate text-xs text-stone-500">{st.fileName}</p>
+              </div>
+              <div className="flex items-center gap-6 tabular">
+                <Figure label="Head" value={fmtNum(st.headCount)} />
+                <Figure label="Gross" value={fmtMoney(st.gross, currency, { decimals: false })} strong />
+                <Figure label="Charges" value={charges ? fmtMoney(charges, currency, { decimals: false }) : '—'} />
+                <Figure label="Net" value={st.net != null ? fmtMoney(st.net, currency, { decimals: false }) : '—'} />
+              </div>
+              <div className="flex shrink-0 justify-end gap-2 lg:w-52">
+                <Button size="sm" variant="secondary" onClick={() => setOpen(open === st.id ? null : st.id)}>{open === st.id ? 'Hide' : 'Animals'}</Button>
+                {st.status === 'imported' && can('worker') && (
+                  <Button size="sm" variant="secondary" onClick={async () => {
+                    if (await confirm({ title: 'Undo this sale?', description: `All ${st.headCount} animals go back into the herd, and the sale income, sale weights and mart charges are removed.`, confirmLabel: 'Undo sale', danger: true })) undo.mutate(st.id)
+                  }}><Undo2 />Undo</Button>
+                )}
+              </div>
+            </div>
+            {open === st.id && (
+              <div className="mt-3 overflow-x-auto rounded-xl ring-1 ring-stone-200 scrollbar-thin">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead className="bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                    <tr><th className="px-3 py-2">Lot</th><th className="px-3 py-2">Tag</th><th className="px-3 py-2 text-right">Weight</th><th className="px-3 py-2 text-right">Price</th><th className="px-3 py-2">Buyer</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {st.lots.map((l) => (
+                      <tr key={l.animalId}>
+                        <td className="px-3 py-1.5 tabular">{l.lot}</td>
+                        <td className="px-3 py-1.5"><Link href={`/livestock/view?id=${l.animalId}`} className="font-medium text-brand-700 hover:underline">{l.tag}</Link>{l.created && <span className="ml-1.5 text-xs text-amber-700">added</span>}</td>
+                        <td className="px-3 py-1.5 text-right tabular">{l.weightKg ? `${fmtNum(l.weightKg)} kg` : '—'}</td>
+                        <td className="px-3 py-1.5 text-right tabular">{fmtMoney(l.price, currency)}</td>
+                        <td className="px-3 py-1.5 text-stone-600">{l.buyer ? titleCase(l.buyer.toLowerCase()) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 // ---------------- Market prices ----------------
 
 const SERIES: Record<string, { label: string; color: string }[]> = {
@@ -390,6 +466,8 @@ const SERIES: Record<string, { label: string; color: string }[]> = {
 const SERIES_NAMES: Record<string, string> = { steers: 'Steers', heifers: 'Heifers', otm: 'OTM cattle', calves: 'Calves', lambs: 'Lambs', hoggs: 'Hoggs', ewes: 'Ewes' }
 
 function Prices() {
+  const { can } = useSession()
+  const [mine, setMine] = useState(false)
   const [species, setSpecies] = useState<'cattle' | 'sheep'>('cattle')
   const { data, isLoading } = useQuery({
     queryKey: ['mart', 'prices', species],
@@ -417,7 +495,11 @@ function Prices() {
           <h3 className="text-[15px] font-semibold text-stone-900">Orkney Mart prices, p/kg</h3>
           <p className="text-[13px] text-stone-500">Monthly average of every lot sold by weight{data?.mine.length ? ', with your own sales as dots' : ''}.</p>
         </div>
-        <Segmented size="sm" value={species} onChange={setSpecies} options={[{ value: 'cattle', label: 'Cattle' }, { value: 'sheep', label: 'Sheep' }]} />
+        <div className="flex flex-wrap items-center gap-2">
+          {can('manager') && <Button size="sm" variant="secondary" onClick={() => setMine(true)}><Settings2 />Your prices per month</Button>}
+          <Segmented size="sm" value={species} onChange={setSpecies} options={[{ value: 'cattle', label: 'Cattle' }, { value: 'sheep', label: 'Sheep' }]} />
+        </div>
+        {mine && <MonthlyPricesSheet onClose={() => setMine(false)} />}
       </div>
       {isLoading ? <div className="h-80 animate-pulse rounded-xl bg-stone-100" /> : chart.length < 2 ? (
         <EmptyState icon={Gavel} title="Not enough sales yet" description="Prices appear once a few reports have been read." />

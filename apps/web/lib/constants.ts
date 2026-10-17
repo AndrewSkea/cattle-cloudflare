@@ -183,6 +183,7 @@ export const EXPENSE_CATEGORIES = [
   { value: 'insurance', label: 'Insurance' },
   { value: 'bedding', label: 'Bedding' },
   { value: 'professional_fees', label: 'Professional fees' },
+  { value: 'mart_charges', label: 'Mart commission & charges' },
   { value: 'other_expense', label: 'Other expense' },
 ]
 export const categoryLabel = (c: string) =>
