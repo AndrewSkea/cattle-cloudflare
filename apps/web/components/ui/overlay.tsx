@@ -28,6 +28,8 @@ function useAutoFocus(open: boolean, ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return
     const t = setTimeout(() => {
+      // Someone already clicked into a field (or the page was slow to settle): don't pull focus away mid-typing.
+      if (ref.current?.contains(document.activeElement) && document.activeElement !== ref.current) return
       const el = ref.current?.querySelector<HTMLElement>('[data-autofocus], input:not([type=hidden]):not([disabled]), select, textarea')
       el?.focus()
     }, 50)
