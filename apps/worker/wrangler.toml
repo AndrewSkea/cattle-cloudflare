@@ -35,5 +35,6 @@ FEEDBACK_REPO = "AndrewSkea/cattle-cloudflare"
 # Web Push public key for reminder notifications; its private half is the VAPID_PRIVATE_KEY secret.
 VAPID_PUBLIC_KEY = "BKRC_8eXTEf0UH3-5gPopKg5dD1c1peJ7bm08RebCjF6LKhzED8h9k8ha-qXsSqNox1DvQSbFeP3YD5RYjUfLY8"
 
-# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_FEEDBACK_TOKEN, VAPID_PRIVATE_KEY
+# Secrets (wrangler secret put <NAME>): JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_FEEDBACK_TOKEN, VAPID_PRIVATE_KEY,
+#   DVSA_CLIENT_ID, DVSA_CLIENT_SECRET, DVSA_API_KEY, DVSA_SCOPE, DVSA_TOKEN_URL (reg lookup; values in Bitwarden)
 # Local development: copy .dev.vars.example to .dev.vars

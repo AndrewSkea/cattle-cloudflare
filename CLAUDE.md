@@ -104,6 +104,9 @@ Key decisions:
   21 days. Reports uses the shared lots to value the herd and show which months pay best (`/api/mart/insights`).
   Importing a match runs the normal exit (sale) path, so withdrawal checks and finance entries apply; undo reverses it.
   Backfill or reload history with `scripts/mart-backfill.ts` (see the file header).
+- **Reg plate lookup:** Equipment form "Look up" → `GET /api/equipment/lookup?reg=` → `services/dvsa.ts` (DVSA MOT
+  History API: Entra client-credentials token cached per isolate + `X-API-Key`). Fills make, model, year, MOT due (and
+  the name if empty). MOT-exempt vehicles (most tractors, trailers) aren't in it, so a 404 is a normal answer.
 - **ScotEID:** SOAP API (WSDL https://api.scoteid.com/api?wsdl). Needs a vendor `SCOTEID_APP_KEY` from ScotEID
   (support@scoteid.com; test against https://api.test.scoteid.com/api first) plus each keeper's own login, stored
   AES-GCM encrypted (key derived from `JWT_SECRET`). Without the key the UI shows "waiting for approval"; deadlines,
@@ -153,7 +156,8 @@ the old number in `management_tag_history`.
 ## Secrets (wrangler secret put)
 
 `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PRIVATE_KEY` (reminders; pairs with `VAPID_PUBLIC_KEY`
-in wrangler.toml); later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
+in wrangler.toml); `DVSA_CLIENT_ID`, `DVSA_CLIENT_SECRET`, `DVSA_API_KEY`, `DVSA_SCOPE`, `DVSA_TOKEN_URL` (reg lookup;
+values in Bitwarden Secrets Manager, local copies in `apps/worker/.dev.vars` and `.env`); later `SCOTEID_APP_KEY` (and optionally `SCOTEID_ENDPOINT`).
 Google OAuth redirect URI: `https://hooveswho.andrewskea.com/api/auth/callback/google`.
 Worker secret `GITHUB_FEEDBACK_TOKEN`: fine-grained GitHub token, this repo only, Issues read/write (without it feedback
 is only stored in D1).

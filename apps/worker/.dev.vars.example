@@ -9,3 +9,9 @@ SCOTEID_ENDPOINT=http://localhost:8787/api/dev/scoteid
 # Local-only Web Push keys for reminder notifications (production uses its own pair: VAPID_PUBLIC_KEY in wrangler.toml, VAPID_PRIVATE_KEY secret)
 VAPID_PUBLIC_KEY=BNJD4lod3RFskWo0lAv9lCRhzNvcbYvTK1yQYsFrDN0NEhEmgz2GUFQuo2s76kDFEVf_uhI51ZA3KwSIL9PbC2Y
 VAPID_PRIVATE_KEY=FRYfzqVaYKQo-IBoAavbVQhCArC1BB5A10Hni9IUCZg
+# DVSA MOT History API for the equipment reg lookup (real values in Bitwarden, DVSA_*); lookup is off without them
+DVSA_CLIENT_ID=
+DVSA_CLIENT_SECRET=
+DVSA_API_KEY=
+DVSA_SCOPE=https://tapi.dvsa.gov.uk/.default
+DVSA_TOKEN_URL=

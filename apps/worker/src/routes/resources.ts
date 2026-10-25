@@ -15,6 +15,7 @@ import {
   EQUIPMENT_CATEGORIES, EQUIPMENT_LOG_TYPES, EQUIPMENT_STATUS, INVENTORY_CATEGORIES, LAND_USES, STRUCTURE_KINDS, TENURES,
   isoDate, optDate, optId, optPosNum, optText, reqText,
 } from '../lib/validators';
+import { DvsaError, lookupVehicle } from '../services/dvsa';
 import { deleteSourceTxn, syncSourceTxn } from '../services/finance';
 import { cleanFieldTxns } from './fields';
 
@@ -210,6 +211,16 @@ async function syncLogCost(c: Ctx, e: typeof schema.equipment.$inferSelect, log:
     description: `${e.name}: ${log.type}${log.description ? ` — ${log.description}` : ''}`, counterparty: log.performedBy, equipmentId: e.id,
   } : null);
 }
+
+/** Make, model, year and MOT from the DVSA MOT History API, to fill in the equipment form. */
+equipment.get('/lookup', requireRole('worker'), async (c) => {
+  try {
+    return c.json({ data: await lookupVehicle(c.env, c.req.query('reg') ?? '') });
+  } catch (e) {
+    if (e instanceof DvsaError) throw new HttpError(e.status, e.message);
+    throw e;
+  }
+});
 
 equipment.get('/:id/logs', requireRole('viewer'), async (c) => {
   const e = await loadEquipment(c, idParam(c));

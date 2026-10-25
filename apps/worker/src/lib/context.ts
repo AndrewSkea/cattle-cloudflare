@@ -21,6 +21,11 @@ export interface Env {
   FEEDBACK_REPO?: string; // owner/name, defaults to AndrewSkea/cattle-cloudflare
   VAPID_PUBLIC_KEY?: string; // Web Push: raw P-256 public key (base64url), in wrangler.toml [vars]
   VAPID_PRIVATE_KEY?: string; // Web Push: the private scalar d (base64url), a secret; reminders are off without it
+  DVSA_CLIENT_ID?: string; // DVSA MOT History API (equipment reg lookup): OAuth client credentials + API key, all secrets
+  DVSA_CLIENT_SECRET?: string;
+  DVSA_API_KEY?: string;
+  DVSA_SCOPE?: string;
+  DVSA_TOKEN_URL?: string;
 }
 
 export type Role = 'viewer' | 'worker' | 'manager' | 'owner';

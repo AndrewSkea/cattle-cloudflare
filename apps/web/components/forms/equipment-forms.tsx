@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { FormError, FormGrid, FormSection, SelectField, TextField, TextareaField, formValues } from '@/components/ui/form'
@@ -15,13 +15,38 @@ export function EquipmentSheet({ onClose, item }: { onClose: () => void; item?: 
   const { can, currency } = useSession()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+  const form = useRef<HTMLFormElement>(null)
+  const [lookup, setLookup] = useState<{ busy?: boolean; error?: string; found?: string } | null>(null)
+  const lookUp = async () => {
+    const el = form.current!.elements
+    const reg = (el.namedItem('registration') as HTMLInputElement).value.trim()
+    if (!reg) return setLookup({ error: 'Enter a registration first' })
+    setLookup({ busy: true })
+    try {
+      const { data: v } = await api.get(`/api/equipment/lookup?reg=${encodeURIComponent(reg)}`)
+      const set = (name: string, value: unknown, onlyIfEmpty = false) => {
+        const input = el.namedItem(name) as HTMLInputElement | null
+        if (input && value != null && value !== '' && !(onlyIfEmpty && input.value)) input.value = String(value)
+      }
+      set('registration', v.registration)
+      set('make', v.make); set('model', v.model); set('year', v.year); set('motDue', v.motDue)
+      set('name', [v.make, v.model].filter(Boolean).join(' '), true)
+      setLookup({ found: [
+        [v.make, v.model].filter(Boolean).join(' '), v.colour, v.fuelType, v.firstUsedDate && `first used ${v.firstUsedDate}`,
+        v.motDue && `MOT to ${v.motDue}`, v.lastMotResult && `last test ${v.lastMotResult.toLowerCase()} ${v.lastMotDate}`,
+        v.odometer, v.outstandingRecall === 'Yes' && 'outstanding recall',
+      ].filter(Boolean).join(' · ') })
+    } catch (e: any) {
+      setLookup({ error: e.message })
+    }
+  }
   const save = useSave((b: any) => item ? api.put(`/api/equipment/${item.id}`, b) : api.post('/api/equipment', b), {
     invalidate: ['equipment'], success: item ? 'Equipment updated' : 'Equipment added', silentError: true,
     onSuccess: (r: any) => { onClose(); if (!item) router.push(`/equipment/view?id=${r.data.id}`) },
   })
   return (
     <Sheet open onClose={onClose} wide title={item ? `Edit ${item.name}` : 'Add equipment'} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="equipment-form" loading={save.isPending}>Save</Button></>}>
-      <form id="equipment-form" className="space-y-8" onSubmit={(e) => { e.preventDefault(); save.mutate(formValues(e.currentTarget), { onError: (err) => setError(err.message) }) }}>
+      <form ref={form} id="equipment-form" className="space-y-8" onSubmit={(e) => { e.preventDefault(); save.mutate(formValues(e.currentTarget), { onError: (err) => setError(err.message) }) }}>
         <FormSection title="Machine">
           <FormGrid>
             <TextField label="Name" name="name" required defaultValue={item?.name} placeholder="e.g. John Deere 6155R" maxLength={100} className="sm:col-span-2" />
@@ -30,7 +55,15 @@ export function EquipmentSheet({ onClose, item }: { onClose: () => void; item?: 
             <TextField label="Make" name="make" defaultValue={item?.make ?? ''} />
             <TextField label="Model" name="model" defaultValue={item?.model ?? ''} />
             <TextField label="Year" name="year" type="number" min={1900} max={2100} defaultValue={item?.year ?? ''} />
-            <TextField label="Registration" name="registration" defaultValue={item?.registration ?? ''} />
+            <div className="flex items-end gap-2">
+              <TextField label="Registration" name="registration" defaultValue={item?.registration ?? ''} className="flex-1" />
+              <Button variant="secondary" onClick={lookUp} loading={lookup?.busy}>Look up</Button>
+            </div>
+            {lookup && !lookup.busy && (
+              <p className={`text-xs sm:col-span-2 ${lookup.error ? 'text-amber-700' : 'text-stone-600'}`} role="status">
+                {lookup.error ?? `DVSA: ${lookup.found}`}
+              </p>
+            )}
             <TextField label="Serial / VIN" name="serialNumber" defaultValue={item?.serialNumber ?? ''} className="sm:col-span-2" />
           </FormGrid>
         </FormSection>
